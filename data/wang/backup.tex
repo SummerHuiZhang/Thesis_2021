@@ -1,0 +1,576 @@
+\section{MVOSR}
+此外，我们分别可视化了KITTI序列00中的10帧（如图\ref{fig:mvosr_method_dis_good})，
+20帧(如图 \ref{fig:mvosr_method_dis_bad})中的特征点分布，在第20帧路面上特征点数量很少，不足以拟合平面计算路面模型。
+
+其主要解决机器人对自身
+所在的位置和姿态的估计，是移动机器人按照需求从起点移动达终点的必要条件，同时将所估计状态信息作为先验信息，机器人更好地进行环境感知，
+此外地图构建，轨迹跟踪等问题也依赖于准确的状态估计。
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{0.45\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/feature18.pdf}
+    
+    \caption{特征点}
+    \label{fig:mvosr_feature}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.45\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/tri18.pdf}
+    
+    \caption{三角剖分}
+    \label{fig:mvosr_tri}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.45\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/triangle18.pdf}
+   
+    \caption{三角形筛选}
+    \label{fig:mvosr_triangle}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.45\textwidth}
+        \includegraphics[width=\textwidth]{figures/mvosr/select18.pdf}
+        
+        \caption{特征点筛选}
+        \label{fig:mvosr_selected}
+        \end{subfigure}
+    \caption{路面特征点筛选}
+    \label{fig:mvosr_road_feature}
+    \end{figure}
+
+    \begin{figure}
+        \centering
+        \includegraphics[width=\textwidth]{figures/mvosr/method/feature_point_vert_dis.pdf}
+    
+        \caption{特征点全局分布}
+        \label{fig:mvosr_method_vert_dis}
+    \end{figure}
+    
+    \begin{figure}
+        \includegraphics[width=\textwidth]{figures/mvosr/method/feature_sample_dis_good.pdf}
+    
+        \caption{特征点分布-KITTI-00-10}
+        \label{fig:mvosr_method_dis_good}
+     \end{figure}
+        \begin{figure}
+        \includegraphics[width=\textwidth]{figures/mvosr/method/feature_sample_dis_worse.pdf}
+    
+        \caption{特征点分布-KITTI-00-15}
+        \label{fig:mvosr_method_dis_worse}
+    \end{figure}
+    \begin{figure}
+            \includegraphics[width=\textwidth]{figures/mvosr/method/feature_sample_dis_bad.pdf}
+    
+            \caption{特征点分布-KITTI-00-20}
+            \label{fig:mvosr_method_dis_bad}
+     \end{figure}
+    
+\iffalse
+Learning-based ego-motion estimation method was started by Roberts \textit{et al.} \cite{roberts2008memory}, which was formulated as a classification task solved by K-Nearest Neighbors. Many pioneering methods explored to learn the mapping from optical flow to ego-motion \cite{guizilini2012semi,costante2016exploring,pillai2017towards,costante2018ls}.  
+Wang \textit{et al.} \cite{wang2017deepvo,wang2018end} proposed an end-to-end learning-based VO, which utilized raw images as the input and also considered sequential information using RNNs. 
+Valada \textit{et al.} \cite{valada2018deep} proposed to learn ego-motion and localization together to improve the accuracy. Parisotto \textit{et al.} \cite{parisotto2018global} proposed a learning-based SLAM method which not only estimated the ego-motion but also considered the global optimization. Alsayed \textit{et al.} \cite{8460773} trained a model for ego-motion correction. Iyer \textit{et al.} \cite{iyer2018geometric} proposed a self-supervised method where the ego-motion estimation is learned from a geometry-based method, which enforced geometric consistency of the trajectory.
+\fi
+
+\begin{algorithm}
+    \caption{基于深度一致性的特征点筛除(最大团剔除法)}
+    \KwIn{特征点集合 $\Omega  =\{ f_0,f_1,....,f_n\} $已知每个特征点的像素位置 $（u_i,v_i）$ 以及对应深度 $\bar{d}_i$}
+    \KwOut{有效特征点集合 $\Lambda \subset \Omega$}
+    将特征点 $\Omega$ 依据其像素位置进行三角剖分，得到三角形集合$\nabla =\{\nabla_0,\nabla_1,...,\nabla_m\},\quad \nabla_{t_i}=\{f_i\in\Omega,\ f_i\in\Omega,\ f_k\in\Omega\}$\\
+    根据 $\nabla$生成无向图$G=\{V,E\}$，其中节点$V=\Omega$，图中的最大团集合就是 $\nabla$ \\
+    设定边势函数$P_e$为4x2矩阵，$P_e[\{f_i,f_j \},\sigma]$代表当观察值为$\sigma$时，$\{f_i，f_j\}$是否有效的的势\\
+    %计算最大团式函数$P_m$为8x8矩阵\\
+    \For{$\forall \nabla_i \in \nabla$}
+    {   $\gamma=0$\\
+        \For {$\forall  \{f_i,f_j\} \subset \nabla_{i}$}
+        {
+            $\gamma_{ij}= (v_i-v_j)(d_i-d_j)$\\
+            $\gamma=2\gamma+\gamma_{ij}$
+        } 
+        $P = P[:,\gamma]$\\
+        $p_a = \frac{\sum_{i\&{2^a}>0} P_i}{\sum_i{P_i}}$\\
+        
+    }
+    $\Lambda = \{f_k\} \quad \forall f_k \in  \Omega \quad \text{and} \quad  p(\check{f_k})>0.5$
+  \label{alg:depth_rejection_4}
+\end{algorithm}
+\begin{algorithm}
+    \caption{基于深度一致性的特征点筛除(简易图剔除法)}
+    \KwIn{特征点集合 $\Omega  =\{ f_0,f_1,....,f_n\}$ 以及每个特征点的像素位置 $（u_i,v_i）$ 以及对应深度 $\bar{d}_i$}
+    \KwOut{有效特征点集合 $\Lambda \subset \Omega$}
+    将特征点 $\Omega$ 依据其像素位置进行三角剖分，得到三角形集合$\nabla =\{\nabla_0,\nabla_1,...,\nabla_m\},\quad \nabla_{t_i}=\{f_i\in\Omega,\ f_i\in\Omega,\ f_k\in\Omega\}$\\
+    根据 $\nabla$生成无向图$G=\{V,E\}$，其中节点$V=\Omega$ \\
+    $\Lambda = \Omega$\\
+    \For{ $\forall f_i \in \Lambda$}
+    {   
+        \For {$f_j\  in \  M(f_i)$}
+        {
+            \If {$(v_i-v_j)(d_i-d_j)>0$}
+            {
+                $\Lambda = \Lambda - \{f_i,f_j\}$
+            }
+        }
+    }
+  \label{alg:depth_rejection_2}
+\end{algorithm}
+
+\subsubsection{聚类算法}
+\begin{algorithm}
+    \caption{基于路面法向的特征点筛除}
+    \KwIn{特征点集合 $\Lambda  =\{ f_0,f_1,....,f_n\} $已知每个特征点的像素位置 $（u_i,v_i）$ 以及在相机坐标系下的坐标 $(\bar{x}_i,\bar{y}_i,\bar{z}_i$)}
+    \KwOut{有效特征点集合 $\Gamma \subset \Lambda$}
+    将特征点 $\Lambda$ 依据其像素位置进行三角剖分，得到三角形集合$\nabla =\{\nabla_0,\nabla_1,...,\nabla_m\},\quad \nabla_{t_i}=\{f_i\in\Omega,\ f_i\in\Omega,\ f_k\in\Omega\}$\\
+    估计初始路面法向$n_{r}$，进而得到路面俯仰角$\theta_r$\\
+    初始有效三角形集合为空集$\Theta = \varnothing$\\
+    \For{$\forall \nabla_i \in \nabla$}
+    {   
+        计算三角形 $\nabla_i$ 的法向$n_i$ 和高度$\bar{h}_i$\\
+        计算三角形俯仰角$\theta_i$\\
+        \If {$\theta_i <\theta_r-80$}
+        {
+            $\Theta = \Theta + {\nabla_i}$
+        }
+    }
+    \eIf{使用无效特征点法}
+    {
+    无效三角形集合 $\hat{\Theta} = \nabla - \Theta$\\
+    计算无效三角形的平均高度$h_t$
+    }
+    {
+        计算有效三角形高度的上四分位数 $h_t$
+    }
+    \For{$\forall \nabla_i \in \Theta$}
+    {   
+        \If {$h_i <h_t$}
+        {
+            $\Theta = \Theta - {\nabla_i}$
+        }
+    }
+\end{algorithm}
+
+\subsubsection{统计分析法}
+为了降低算法复杂性，我们使用公式\ref{eq:pitch_t}根据相机运动估计出相机俯仰角
+$\theta$。
+然后所选出的特征点进行选择变换，
+\begin{equation}
+    \begin{pmatrix} x'\\y'\\z'\end{pmatrix} = 
+ \begin{pmatrix}
+  1&0&0 \\
+  0&cos(\theta)&-\sin(\theta)\\
+  0&sin(\theta)&\cos(\theta)
+ \end{pmatrix}
+ \begin{pmatrix}x\\y\\z
+\end{pmatrix}
+\label{eq:feture_remap}
+\end{equation}
+此时得到特征点的y轴数值即为相机高度。但由于测量误差以及非路面点干扰的影响，$y'$将服从多模态分布或者负偏态分布。我们计算$y'$的分布的偏态系数
+和模态，然后根据偏态系数和模态采取不同的计算路面高度的方法。
+我们首先计算分布的模态。计算$y'$的离散化分布$d'\in R^n$，选取$d'$中所有满足
+$d'_i>d'_{i-1}$,$ d'_i>d'_{i+1} $和$ d'_i>0.5d_{max}$ 的位置作为候选众数。此外如果$d_{0,i} ==d_{max}$也选做候选众数。
+随后如果两个众数相隔小于2，则两个众数合并为一个。数据若只有一个众数的分布为单模态数据，否则为多模态数据。对于不同的数据类型我们选择不同的路面
+高度计算方法。
+对于单模态数据，我们采用非参数化的非皮尔森第二偏度因子估计偏度
+\begin{equation}
+    \rho_2 = \frac{3(\text{mean}-\text{median})}{\text{standard deviation}}
+\end{equation}
+当$\rho_2>0$时，分布为正偏态分布，意味着大部份均值左侧拥有更多的数据，也意味着众数右侧拥有更多数据，$\rho_2<0$时则反正。
+在理想情况下，大部分特征点分布在路面上，则路面高度应为数据的众数，路面下方出现数据相比于路面上方出现数据的概率较低，也就意味着
+众数左侧理论上应该拥有更多数据，也就是说理想情况下$y'$的分布应为负偏态分布，偏度$\rho_2$越小则，残余特征点越少。
+于是当计算所得偏度为正且大于一定阈值，则说明大部分数据在众数只右，此时众数绝对不再是道路高度，而是由于路面上特征点过少造成的计算错误，
+如图 \ref{fig:mvosr_wrong_skewness}。于是对于负偏态分布我们选择分布的众数作为相机相对高度，否则使用分布右侧第一个出现局部最小值
+的位置作为相机相对高度，以获取比众数跟准确的高度估计。
+
+\begin{figure}[h]
+    \includegraphics[width=\textwidth]{figures/mvosr/method/00-765-model1-ps131.pdf}
+    \caption{正偏态分布}
+    \label{fig:mvosr_wrong_skewness}
+\end{figure}
+\begin{figure}[h]
+    \includegraphics[width=\textwidth]{figures/mvosr/method/00-50-model2-ns119.pdf}
+
+    \caption{负偏态分布}
+    \label{fig:negative_skewness}
+\end{figure}
+\begin{figure}[h]
+    \includegraphics[width=\textwidth]{figures/mvosr/method/00-72-model2-ns003.pdf}
+
+    \caption{近似非偏态分布}
+    \label{fig:no_skewness}
+\end{figure}
+对于多模态数据，根据路面特征点高度应该大于其他位置的特征点，我们使用最最右侧一个模态上的数据，计算路面高度。我们
+选择皮尔森第一偏度因子近似估计偏度
+\begin{equation}
+    \rho_1 = \frac{(\text{mean}-\text{mode})}{\text{standard deviation}}
+\end{equation}
+此处的$\text{mode}$并非全局众数，而是最右侧模态的众数。同单模态一样，对于负偏态分布我们选择分布的众数作为相机相对高度，否则使用分布右侧第一个出现局部最小值
+的位置作为相机相对高度。
+相机相对高度$\bar{h}$获取之后，考虑已知的相机绝对高度$h$，获取尺度系数$s=\frac{h}{\bar{h}}$
+
+\begin{algorithm}
+    \caption{路面高度计算方法（统计分析法）}
+    \KwIn{特征点集合 $\Gamma  =\{ f_0,f_1,....,f_n\} $已知每在相机坐标系下的坐标 $(\bar{x}_i,\bar{y}_i,\bar{z}_i$);路面俯仰角$\theta$}
+    \KwOut{路面相对高度 $\bar{h}$}
+    根据公式\ref{eq:feture_remap}特征点坐标变换得到 $(\bar{x'}_i,\bar{y'}_i,\bar{z'}_i$)\\
+    计算$\bar{y'}$的概率分布直方图$hist_{y'}$\\
+    根据$hist_{y'}$计算该分布的模态 $N_m$，已经模值集合$M={m_0,m_1,...,m_{N_{m-1}}}$\\
+    计算每一个模态的右边界点$B={b_0,b_1,...,n}$\\
+    \eIf{$N_m=1$}
+    {
+        根据皮尔森第二偏度系数计算偏度$\rho$
+    }
+    {
+        根据皮尔森第一偏度系数计算最后一个模值偏度$\rho$
+    }
+    
+    \eIf{$\rho>0.5$}
+    {
+        $\bar{h} = B[N_{m-1}]$
+
+    }
+    {
+        $\bar{h} = M[N_{m-1}]$
+    }
+  \label{alg:road_height_calculation}
+\end{algorithm}
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[c]{0.9\textwidth}
+        \centering
+        \includegraphics[width=0.9\textwidth,height=0.2\textwidth]{figures/mvosr/method/before_height_removal.pdf}
+        \caption{高度剔除之前}
+        \label{fig:mvosr_feature_before_height}
+        \vspace*{2mm}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.9\textwidth}
+        \centering
+        \includegraphics[width=0.9\textwidth,height=0.2\textwidth]{figures/mvosr/method/after_height_removal.pdf}
+
+        \caption{高度剔除之后}
+        \label{fig:mvosr_feature_after_height}
+    \end{subfigure}
+
+    \caption{基于非平行区域高度的特征点剔除}  
+    \label{fig:mvosr_feature_select_by_height}  
+\end{figure}
+
+\iffalse
+\begin{table}[h]
+    \caption{基于路面模型的特征点剔除对比}
+    \label{tab:flat_removal}
+    \begin{center}
+    %\begin{tabular}{ccccccccc}
+    \STautoround*{2}
+    \begin{spreadtab}{{tabular}{ccccccccc}}
+    \hline
+    @\multirow{2}{*}{数据} & @\multicolumn{2}{c}{不剔除} & @\multicolumn{2}{c}{固定区域} &@ \multicolumn{2}{c}{仅角度剔除} & @\multicolumn{2}{c}{角度+高度} \\
+     \cline{2-3} \cline{4-5}  \cline{6-7}    \cline{8-9} 
+                        &@ RPE   & @Scale RPE    & @RPE     & @Scale RPE     &@ RPE      & @Scale RPE   & @RPE      & @Scale RPE     \\ \hline
+    @00                  &  11.41       & 11.58            &  7.44        &   7.33              &  4.51        &  4.13            &  2.13       &  1.62             \\ 
+    @02                  &  13.53       & 13.73            &  3.59        &   3.09              &  1.94        &  1.33            &  1.79       &  1.12              \\ 
+    @04                  &  17.94       & 17.91            &  7.83        &   7.80              &  2.47        &  2.36            & 1.92        &  1.81              \\ 
+    @06                  &  12.26       & 12.23            &  17.4        &   16.9              &  4.18        &  3.80            &  2.24       &  1.41               \\  \hline
+    @\text{AVG}             &  (b3+b4+b5+b6)/4       & (c3+c4+c5+c6)/4   & (d3+d4+d5+d6)/4        &  (e3+e4+e5+e6)/4  & (f3+f4+f5+f6)/4      &  (g3+g4+g5+g6)/4    & (h3+h4+h5+h6)/4 & (i3+i4+i5+i6)/4   \\ \hline
+    %\end{tabular}
+\end{spreadtab}
+\end{center}
+\end{table}
+
+控制基于深度的剔除方式一致（最大图剔除），路面模型计算方式一致（RANSAC），滤波方式一致（中值滤波），
+\begin{table}[h]
+    \caption{基于路面模型的特征点剔除对比2}
+    \label{tab:flat_removal}
+    \begin{center}
+    %\begin{tabular}{ccccccccc}
+    \STautoround*{2}
+    \begin{spreadtab}{{tabular}{ccccccccc}}
+    \hline
+    @\multirow{2}{*}{数据} & @\multicolumn{2}{c}{不剔除} & @\multicolumn{2}{c}{固定区域} & @\multicolumn{2}{c}{仅角度剔除} & @\multicolumn{2}{c}{角度+高度} \\
+     \cline{2-3} \cline{4-5}  \cline{6-7}    \cline{8-9} 
+                        & @RPE   & @Scale RPE    &@ RPE     &@ Scale RPE     & @RPE      & @Scale RPE   & @RPE      & @Scale RPE     \\ \hline
+    @00                  & 10.40  & 10.57             &  9.46        &   9.39             &  3.37        &  3.01             & 2.00     &  1.49              \\ 
+    @02                  & 11.18   &11.39              &  4.28        &   3.78             &  2.16        &  1.53          & 1.72     &  1.06              \\ 
+    @04                  &  14.08  & 14.4              &  8.00        &   7.97            &  3.68        &  3.64            &  2.15    &  2.01              \\ 
+    @06                  & 10.65    &10.67              &  17.5        &   17.0             &  4.70        &  4.36            & 2.09    &  1.22               \\  \hline
+    @\text{AVG}          &  (b3+b4+b5+b6)/4       & (c3+c4+c5+c6)/4   & (d3+d4+d5+d6)/4        &  (e3+e4+e5+e6)/4  & (f3+f4+f5+f6)/4      &  (g3+g4+g5+g6)/4    & (h3+h4+h5+h6)/4 & (i3+i4+i5+i6)/4   \\ \hline
+  %  \end{tabular}
+\end{spreadtab}
+\end{center}
+\end{table}
+\begin{table}[h]
+    \caption{路面模型特征点剔除效果}
+\label{tab:flat_removal}
+\begin{center}
+ %\STautoround*{2}
+\begin{spreadtab}{{tabular}{ccccccc}}
+    \hline
+    @\multirow{2}{*}{数据} & @运行距离 &@角度误差 &@不剔除 & @固定区域 & @角度剔除 &@ 角度加高度剔除 \\
+              &@ (m)   & @ (deg/m) &@ (\%)   & @ (\%)     &@ (\%)   & @ (\%)    \\ \hline
+    \hline
+    @\text{00}            &  3724    & 0.0053   &4.09      &  4.05 & 3.25   &  2.46       \\
+    @\text{02}            &  5067    & 0.0041   &2.75      &  4.08 &3.53    &  1.76       \\
+    @\text{03}            &  561     & 0.0035   &2.73      &  5.05 &3.15    &  1.14       \\
+    @\text{04}            &  394     & 0.0049   &1.93      &  6.32 &6.78    &  1.81       \\
+    @\text{05}            &  2206    & 0.0041   &3.73      &  3.72 &2.38    &  1.74       \\
+    @\text{06}            &  1233    & 0.0060   &3.71      &  2.99 &6.46    &  3.19       \\
+    @\text{07}            &  695     & 0.0092   &5.61      &  3.67 &4.31    &  3.44       \\
+    @\text{08}            &  3223    & 0.0035   &3.55      &  3.59 &3.80    &  2.65       \\
+    @\text{09}            &  1705    & 0.0032   &4.54      &  4.25 &3.02    &  1.68       \\
+    @\text{10}            &  920     & 0.0048   &5.02      &  1.97 &3.72    &  2.12       \\
+    \hline
+    @\text{AVG}           &  sum(b3:b12)/10   & sum(c3:c12)/10   & sum(d3:d12)/10  & sum(e3:e12)/10  & sum(f3:f12)/10 &  sum(g3:g12)/10 \\ \hline
+    \hline
+\end{spreadtab}
+\end{center}
+\end{table}
+\subsubsection{路面模型计算对比}
+
+\subsubsection{初始运动估计效果对比}
+\begin{table}[h]
+    \caption{基于路面模型的特征点剔除对比}
+    \label{tab:flat_removal}
+    \begin{center}
+    \begin{tabular}{ccccccccc}
+    \hline
+    \multirow{2}{*}{数据} & \multicolumn{2}{c}{Fast-VO} & \multicolumn{2}{c}{VISO-M} & \multicolumn{2}{c}{SuperVO} & \multicolumn{2}{c}{DeepVO} \\
+     \cline{2-3} \cline{4-5}  \cline{6-7}    \cline{8-9} 
+    & 原始轨迹   & 尺度恢复  & 原始轨迹   & 尺度恢复 & 原始轨迹   & 尺度恢复 & 原始轨迹   & 尺度恢复   \\ \hline
+  00&\\
+  02&\\
+  04&\\
+  06&\\  
+    \end{tabular}
+\end{center}
+\end{table}
+\fi
+
+\chapter{Homovo}
+%The difference between supervised  and unsupervised  (or
+%self-supervised) methods is whether the ground truth is directly used to
+%achieve the loss, or a to obtain a loss.
+%But the essential loss for the ego-motion network is still the ground truth ego-motion.
+% challenge
+
+%The biggest challenge for learning based method is to make the neural network
+%really learn how to calculate the ego-motion not just remember the dataset. In
+%other word, the ability to compute the ego-motion in a new circumstance is
+%what we need.
+% Also, convolutional networks can successfully extract features that
+%can be used for classification, but it may be that useful for ego-motion
+%estimation.
+
+%During training time, we took a triplet of three consecutive images $\mathbf{I}_n,\mathbf{I}_m,
+%\mathbf{I}_t$ as input to the neural network. We use Eq. \ref{eq:loss} as the loss, and
+%use backpropagation to compute the gradients for the Adam \cite{kinga2015method} variant of SGD. Backpropagation
+%is performed with the Pytorch \cite{paszke2017automatic} framework.
+%
+
+%Less training data decreases performance, but our method 
+%outperforms DeepVO, especially for rotation estimation. DeepVO and
+%our method both try to consider the properties of ego-motion but DeepVO only focuses on the sequential information.
+% maybe in future work
+%These two methods may be able to achieve better performance when they are combined.
+
+\iffalse
+Recently, learning-based methods which directly estimate the ego-motion have
+become active research areas. Convolutional Neural Networks (CNNs)
+\cite{krizhevsky2012imagenet}, either supervised or unsupervised, are most
+widely used to learn a mapping function from image pairs to ego-motion. In
+supervised methods \cite{wang2017deepvo}, the ground-truth ego-motion is
+directly used to compute a training loss, while unsupervised methods
+\cite{zhou2017unsupervised} usually estimate both ego-motion and image depth to
+formulate an image reprojection-based loss.
+Most learning-based methods model the VO problem as a regression 
+from pairs of images to rigid motions. Currently, the accuracy of
+these methods is  worse compared to geometry-based approaches.
+We argue that this is partly because these approaches do not fully model
+the structure of the VO problem. In particular, they do not explicitly
+model certain properties that the VO mapping should have, such as
+the fact that for a given pair of images, and the same pair of images
+in reverse order, the estimated motions should be the inverse of each other. This makes
+the problem ill-defined. 
+Learning-based methods formulate ego-motion estimation as a regression problem
+by modeling the many-to-one mapping from two consecutive images to ego-motion
+
+The domain of the mapping has dimensionality ${2c\times w \times h}$, where $c$
+is the number of channels in each image and $w,\ h$ are the width and height of
+the input image respectively.
+
+However, the mapping is ill-defined as the constraints of ego-motion are
+not considered. Instead, we propose to redefine the learning-based ego-motion
+estimation formulation:
+\fi
+\iffalse
+Four experiments were conducted to show the performance of the proposed method.
+First, we verified whether CNNs are sufficient for learning ego-motion
+estimation, and whether the $L2$ loss alone can learn the ego-motion mapping.
+This is an implicit assumption for most learning-based ego-motion estimation
+research. Second, we verified the efficiency of the proposed learning objective
+by evaluating on the testing dataset with different learned models.  Third, the
+result is compared with other state-of-the-art methods. Finally, an experiment
+was performed to verify whether our drivable region-based method can further
+improve ego-motion estimation.
+\fi
+\section{PADVO}
+\begin{table*}[!htbp]
+    \caption{不同模型的精度比较}
+    \begin{center}
+    \begin{tabular}{c c c c c c c c c c c c c }
+    \toprule
+    % \hline
+    \multicolumn{2}{c}{Setting}   &\multicolumn{2}{c}{Non-PAD} &\multicolumn{2}{c}{Non-PAD with Coor} & \multicolumn{2}{c}{PAD without Reli}& \multicolumn{2}{c}{PAD}\\
+    %  % \hline%\hline
+    \cline{3-4}  \cline{5-6}  \cline{7-8} \cline{9-10} 
+    \multirow{2}{*}{Train} &\multirow{2}{*}{Test}  & Trans & Rot  & Trans & Rot &Trans & Rot& Trans & Rot\\ 
+     && (\%) & (deg/m)  & (\%) & (deg/m)& (\%) & (deg/m) & (\%) & (deg/m)\\
+    \midrule
+      K-00& K-06   &27.66&0.1593&25.38&0.1519&16.54&0.0566&\textbf{14.11}& 0.0669 \\
+      K-00& K-08   &26.22&0.1473&19.13&0.1005&19.34&0.0861&\textbf{17.46}& 0.0829 \\
+      K-00& K-10   &23.67&0.108&20.53&0.0563&\textbf{13.19}&0.0349&16.25& 0.0705 \\
+      R-01& R-02   &14.23&0.0405&19.54&0.0550&16.23&0.0510&\textbf{12.37}& 0.0361 \\
+      R-01& K-10   &34.79&01612&35.84&0.1825&\textbf{23.73}&0.1189&24.20& 0.0705\\
+      K-00& R-02   &52.82&0.1663&32.40&0.1135&29.76&0.0784&\textbf{29.33}& 0.1663\\
+    \midrule
+    % \textbf{Avg.} & \textbf{84.0}\\
+    \multicolumn{2}{c}{Avg} &29.90 & 0.1304& 25.47      &  0.1100  &  19.80 &\textbf{0.0710}& \textbf{18.95} & 0.0822\\
+    % \hline
+    \bottomrule
+    \end{tabular}
+    \end{center}
+    \label{tab:model_compare}
+    \end{table*}
+    
+
+%As a result of the special architecture for ego-motion estimation, the output of the network from an image pair should be $N_p$ ego-motions, we assume that the $N_p$ ego-motions is in the identical gaussian distributions and they are independent from each other. The means of the gaussian distribution is the real ego-motion. A naive approach to achieve the ego-motion from the $N_p$ ego-motions is to calculate their mean. However, the rotation is not able to be \textit{averaged} by divide the sum by number, as that may not in the middle of the individles.
+
+%We propuse two methods to get a good ego-motion from the ego-motion estimated from the patches. The first one is by optimization: we formulize this problem by a two-vertice graph optimization, where the two vertice are the poses of the robot before and after the motion, and there are $N_p$ edges between the two vertice. Here the edges are the estimated ego-motion. The final ego-motion can be solved by solve the optimization problem by g2o \cite{}. (From experiments, we found that the result of graph optimization is almost same with the result of weighted sum.)
+
+
+%There should be relationship between the information entropy contained in the image pair and the accuracy of estimated ego-motion, we evaluate the relationship in Fig. \ref{}. The relationship can be used to improve the performance both on training and testing stages.
+
+%The other method is to learn a mapping function from the intial ego-motions to the final ego-motion. We add a convolutional layer to learn the relationship between them. The draw back of this method is that we have specitive the kernel size of the convolutional layer related to the input image size which degrade our method to specific image size.
+
+\iffalse
+We evaluate the accuracy of reliability by comparing them with ego-motion estimation errors. 
+The reliability is evaluated in two folds: one is the reliability of the ego-motion estimation 
+from an image patch (as shown in Fig. \ref{fig:relia_error_1}); the other is the reliability from 
+ frame (as shown in Fig. \ref{fig:frame_reliability}). These two figures show that our reliability 
+ estimation works well qualitatively because when the error of estimated ego-motion is bigger, 
+ the unreliability is bigger as well.
+\fi
+\iffalse
+We also estimated the reliability of the ego-motion estimation, 
+which provides useful information for practical applications. Experiments on KITTI dataset and Robotcar 
+dataset show that the PAD-VO improves the estimation accuracy when testing in the same environment, and 
+improves the generalization ability when testing on a different environment. Also, the estimated reliability 
+matches the estimated error in the testing set. Comparison with other methods, PAD-VO achieves a better 
+performance. In addition, our method is orthogonal to other learning-based ego-motion estimation methods, 
+which means it can be further improved by integrating with existing methods. Our future work is to combine 
+our structure with other state-of-the-art algorithms to improve the ego-motion accuracy further.
+\fi
+\begin{table*}[!htbp]
+    \caption{Network Structure of Ego-motion Model and Reliability Model}
+    \label{tab:network_structure}
+    \begin{center}
+    \begin{tabular}{c c c c c c c c c c c c c c c c c c c c c c c c}
+    \toprule
+    % \hline
+    \multirow{2}*{Network} & \multicolumn{3}{c}{1} &\multicolumn{3}{c}{2} & \multicolumn{3}{c}{3}& \multicolumn{3}{c}{4}& \multicolumn{3}{c}{5} &  \multicolumn{3}{c}{6}& \multicolumn{3}{c}{{7}}\\
+    %  % \hline%\hline
+    \cline{2-4}  \cline{5-7}  \cline{8-10} \cline{11-13} \cline{14-16} \cline{17-19} \cline{20-22}
+        & k & n  & s & k & n  & s& k & n  & s& k & n  & s& k & n  & s& k & n  & s& k & n  & s\\
+    \midrule
+         ego-motion&7&16&2&5&32&2&3&64&2&3&128&1&3&256&2&3&512&1&1&6&1\\
+         reliability&7&16&2&5&32&2&3&64&2&3&128&1&3&256&2&3&16&1&1&1&1\\
+    % \hline
+    \bottomrule
+    \end{tabular}
+    \end{center}
+    \end{table*}
+
+    In this paper, we are focusing on the structure of ego-motion estimation networks, which is orthogonal to the above approaches, and able to be used together with other ego-motion estimation methods, whether supervised or unsupervised, one stage or two stages. We propose a patch agreement ego-motion estimation method to partly solve those two problems. The idea is based on one observation: the calculation of ego-motion does not depend on the whole image. One sub-region of the original image is sufficient to estimate the ego-motion as long as it contains enough features. A new model structure for ego-motion estimation is proposed to estimate the ego-motion and the reliability for each image patch, as shown in Fig. \ref{fig:problem}. This solution can improve the ego-motion performance by increasing the similarity of two different inputs from the different scene and the data amount implicitly. 
+    The performance of our method is compared with other methods on the
+KITTI dataset, which is a popular benchmark for the existing VO methods. 
+Sequence 00-08 are used for training, 09 and 10 for testing. As for the scale problem, 
+our estimated path is re-scaled by multiplying an overall scale parameter. 
+The results of the unsupervised methods (SfM-Learner
+\cite{zhou2017unsupervised} and GeoNet \cite{yin2018geonet}) are scaled 
+to align with the ground truth every five frames to reduce drifting issue.
+The evaluation results are shown in Table \ref{tab:kitti_compare}. Although our method
+outperforms other methods by a small margin, one of the main advantages of this
+work is that our methods can be applied with other works in a complementary manner.
+Our method can be further improved by integrating other methods such as unsupervised framework. 
+
+\iffalse
+\subsubsection{Data Balancing}
+
+For the data collected by ground vehicles, the distribution is always not balanced, as shown in Fig. \ref{fig:rotation_dis_all}.
+Most rotation motion is smaller. We adjust the sampler according to the rotation distribution, data with smaller probability
+will be assigned a bigger weight for sampling. In detail, we separated the rotation motion into 20 different section,
+for each section, we count the data amount $n$, and the sampling weight is set as 
+$$w = \frac{1}{n}$$
+
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.9\textwidth]{datavo/hist_00_10.pdf}
+    \caption{y-axis rotation distribution of Kitti dataset}
+    \label{fig:rotation_dis_all}
+\end{figure}
+\fi
+\iffalse
+\begin{figure}[h]
+    \centering
+    \mysubfigure[00]{0.45}{\label{fig:r_motion_00}
+    \includegraphics[width=\textwidth]{datavo/hist_00.pdf}
+    }
+    \mysubfigure[01]{0.45}{\label{fig:r_motion_01}
+    \includegraphics[width=\textwidth]{datavo/hist_01.pdf}
+    }
+    \mysubfigure[02]{0.45}{\label{fig:r_motion_02}
+    \includegraphics[width=\textwidth]{datavo/hist_02.pdf}
+    }
+    \mysubfigure[06]{0.45}{\label{fig:r_motion_06}
+    \includegraphics[width=\textwidth]{datavo/hist_06.pdf}
+    }
+    \mysubfigure[08]{0.45}{\label{fig:r_motion_08}
+    \includegraphics[width=\textwidth]{datavo/hist_08.pdf}
+    }
+    \mysubfigure[10]{0.45}{\label{fig:r_motion_10}
+    \includegraphics[width=\textwidth]{datavo/hist_10.pdf}
+    }
+    \caption{Rotation distribution of different sequence}
+    {\label{fig:rotation_distribution}}
+\end{figure}
+
+\fi
+\For {$\forall\; ^pI_t^{t+1} \subset I_t^{t+1}$}
+{
+  $^pT =F_{pa}(I_t^{t+1};\omega_{pa})$ \\
+  $^pa =F_{re}(I_t^{t+1};\omega_{re})$ \\
+  $L = L + \exp(a)\|d\|_2+ \lambda\|a\|_$ \\
+}
+\begin{figure}[t]
+
+    \centering
+    \mysubfigure[KITTI 06 ]{0.45}{\label{fig:model_test_kitti_06}
+    \includegraphics[width=\textwidth]{figures/padvo/kitti_pose_06.pdf}
+    }
+    \vspace*{2mm}
+    \mysubfigure[KITTI 08 ]{0.45}{\label{fig:model_test_kitti_08}
+    \includegraphics[width=\textwidth]{figures/padvo/kitti_pose_08.pdf}
+    }
+    \vspace*{2mm}
+    \mysubfigure[KITTI 10 ]{0.45}{\label{fig:model_test_kitti_10}
+    \includegraphics[width=\textwidth]{figures/padvo/kitti_pose_10.pdf}
+    }
+    \mysubfigure[Robotcar]{0.45}{
+    \includegraphics[width=\textwidth]{figures/padvo/robocar_1511_02_remap_pose.pdf}
+    \label{fig:model_test_robotcar}
+    }
+    \caption{模型测试}
+    {\label{fig:model_test}}
+    \end{figure}
+    
+
+
+    \item 我们首先研究基于路面几何模型的单目视觉里程计尺度计算方法。不同于传统基于路面颜色的路面区域分割方法，本文首次提出使用路面几何结构进行路面特征点筛选，筛选依据为本文提出的深度一致性（即路面上任意两点，越靠近图像下侧的像素点深度越小）和法向一致性（路面上任意三点所在平面的方向具备一致性）两个必要条件。在具体实现上，我们首先提出使用三角剖分技术将路面特征点分割成多个三角形区域并构建为无向图模型，然后验证图中任意相邻点的深度一致性和每个三角形的三个顶点法向一致性，最后使用筛选得到路面特征点通过随机抽样一致（RANSAC）算法计算路面模型，进行尺度参数计算。本文所提出的算法在公开数据集上得到了充分的验证并取得了同时期的最优效果，同时我们公开了源代码\footnote{https://github.com/TimingSpace/MVOScaleRecovery}。
+    \item 基于路面几何模型的尺度计算受到相机高度固定和行驶区域平整两个假设的约束，只适用于路面车辆。为了得到更好的尺度计算泛化性，我们提出结合单目深度估计的单目视觉里程计尺度计算方法。此工作主要有三个子贡献：我们提出了创新的网络架构通过构建条件随机场模型将相邻帧的光度差异以及帧内的深度连续性作为约束提升了单目深度估计的精度；同时使用所估计的绝对深度与单目视觉里程计所得到相对深度进行统计分析，使用学生t分布对尺度系数进行建模，并通过极大似然估计计算尺度系数；另外在预测阶段，本文提出的深度估计和尺度系数计算可以通过迭代优化的方式提升精度。
+    \item 尺度计算使单目视觉里程计具备真实尺度和较高的精度，但视觉里程计问题本身是一个系统工程的问题，其精度依赖于复杂的手动参数调节，且计算过程不可微，无法直接与很多估计融合。本文研究了单目视觉里程计的映射学习问题，即将视觉里程计公式化为一个端到端的映射函数，通过神经网络构建基础模型并通过训练学习的方式进行视觉里程计的映射学习。在映射学习研究中，我们从损失函数和网络架构入手，分别提出了基于群同态的损失函数设计和基于区域一致性的网络架构设计，提升了基于学习的端到端视觉里程计的精度和泛化性。本文所提出的损失函数和网络架构同样在公开数据集得到了充分的验证，同时我们公开了源代码\footnote{https://github.com/TimingSpace/PADVO}。
+    \item 我们根据路面车辆的特点，简化了单目视觉里程计问题，只学习车辆的主要维度运动，同时研究旋转运动与平移的运动之间的耦合关系，并利用其中关系降低忽略次要运动时造成的运动偏移。此外，根据车辆运动时光流的分布提出使用非正方形的卷积核进行特征提取。最终，我们设计了一个十分轻量化的视觉里程计运动估计模型，可以200帧每秒实时运行在CPU上，并取得与其它算法可比的精准度，我们同样也公开了源代码\footnote{https://github.com/TimingSpace/DMVOGV}。

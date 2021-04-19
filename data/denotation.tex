@@ -1,0 +1,56 @@
+\item[$\mathbb{R}$] 实数集合
+\item[$\mathbb{I}$] 0-255闭区间内所有整数集合 
+\item[$\text{SO}(3)$] 3维空间特殊正交群
+\item[$\text{SE}(3)$] 3维空间特殊欧式群 
+\item[$\mathbf{R}$] 旋转矩阵 $\mathbf{R} \in \text{SO}(3)$
+\item[$\mathbf{R}_{ij}$] 矩阵$\mathbf{R}$的第$i$行第$j$列的元素
+\item[$\mathbf{r}$] 旋转向量 
+\item[$\mathbf{t}$] 平移向量
+\item[$\mathbf{t}_i$]  向量 $\mathbf{t}$的第$i$个元素
+\item[$\mathbf{\bar{t}}$] 相对尺度下的平移向量
+\item[$\mathbf{[t]}_\times$] 斜对称矩阵 $\mathbf{[t]}_\times = \begin{pmatrix}
+    0  & -t_3& t_2 \\
+    t_3& 0   & -t_1\\
+    t_1& -t_2& 0   \\
+\end{pmatrix}$
+\item[$\mathbf{T}$] 运动矩阵 $\mathbf{T} = \begin{pmatrix}
+    \mathbf{R}&  \mathbf{t}\\
+    0&  1\\
+\end{pmatrix} \in \text{SE3}$  
+\item[$\mathbf{T}_{t}^{t+1}$] $t$时刻到$t+1$时刻机器人的运动矩阵
+\item[$\mathbf{\tau}$] 运动向量 $\mathbf{\tau} = \log(\mathbf{T}) \in \text{se3} $
+\item[$\mathbf{\underline{\tau}}$] 训练集中$\tau$的真值
+\item[$\log(\mathbf{R})$] 旋转矩阵的对数映射（结果为旋转运动的角轴表示）
+\item[$\exp(\mathbf{r})$] 旋转向量反对称矩阵的指数映射 
+\item[$\mathbf{I}^t$] 第t帧图像
+\item[$\mathbf{D}^t$] 第t帧图像对应的深度图
+\item[$\Omega_{\mathbf{I}}$] 图像集合
+\item[$\mathbf{I}_m^n$]  图像和图像组成的图像对
+\item[$\Omega_{\mathbf{I}_m^n}$] 图像对集合
+\item[$\otimes$] 定义在图像对集合上的二元运算，$\mathbf{I}_m^t \otimes \mathbf{I}_t^n= \mathbf{I}_m^n$
+\item[$^p\mathbf{I}^t$] 第t帧图像的第p块子区域
+\item[$^p\mathbf{I}_m^n$] 图像对的第p块子区域
+\item[$\Omega_f$]  特征点集合$\Omega_f=\{f_0,f_1,...\}$
+\item[$\Omega_{\mathbf{I}^t}$]  图像$\mathbf{I}^t$中的像素点集合 
+\item[$f^t_i$] 第t帧图像的第i个特征点
+\item[$\check{f}$] 特征点$f$属于路面区域
+\item[$\hat{f}$] 特征点$f$不属于路面区域
+\item[$\mathbf{n}_r$] 路面所在平面在相机坐标系下的法向  
+\item[$\mathbf{u}^t_i$] 第t帧第i个像素点的2维像素坐标 $\mathbf{u}_i=(u_i,v_i)$
+\item[$\mathbf{u}_i$] 第i个像素点的2维像素坐标$\mathbf{u}_i=(u_i,v_i)$ 
+\item[$\vec{\mathbf{u}}_i$] 第i个像素点的扩充像素坐标$\vec{\mathbf{u}}_i=(u_i,v_i,1)$ 
+\item[$\mathbf{x}_i$] 第i个像素点的3维空间坐标$\mathbf{x}_i=(x_i,y_i,z_i)$
+\item[$d_i$] 第i个像素点的深度
+\item[$I_p$] 像素点$p$的像素值
+\item[$\mathbf{u}_p$] 像素点$p$的像素位置
+\item[$d_p$] 像素点$p$的深度值
+\item[$\underline{d_p}$] 训练集中像素点$p$深度值的真值
+\item[$\mathbf{x}_p$] 像素点$p$的空间坐标 
+\item[$I^t_p$] 第t帧图像中像素点$p$的像素值
+\item[$a \propto b $] $a$与$b$正相关
+\item[$\mathbf{v}^\text{T}$] 向量的转置
+\item[$\mathbf{M}^\text{T}$] 矩阵的转置 
+\item[$\mu(\mathbf{x})$] $\mathbf{x}$的均值 
+\item[$\sigma(\mathbf{x})$] $\mathbf{x}$的标准差
+\item[$\sigma^2(\mathbf{x})$] $\mathbf{x}$的方差  
+\item[$Q_{\frac{1}{2}}(\mathbf{x})$] $\mathbf{x}$的中位数

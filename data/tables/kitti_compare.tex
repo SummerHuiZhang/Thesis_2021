@@ -1,0 +1,50 @@
+\begin{table*}[!htbp]
+    \caption{Comparison with other Learning-based Methods}
+    \begin{center}
+    \begin{tabular}{c c c c c c c c c c c c c c}
+    \toprule
+    % \hline
+    \multirow{4}*{Seq} & \multicolumn{2}{c}{Zhan et al.} &\multicolumn{2}{c}{DeepVO} & \multicolumn{2}{c}{SfM-Learner.}& \multicolumn{2}{c}{GeoNet}&  \multicolumn{2}{c}{\multirow{2}*{Our Method }}\\
+                       & \multicolumn{2}{c}{(from \cite{zhan2018unsupervised})}  & \multicolumn{2}{c}{(from \cite{wang2017deepvo})}&\multicolumn{2}{c}{(from \cite{zhou2017unsupervised})} &\multicolumn{2}{c}{(from \cite{yin2018geonet})} &\\
+    %  % \hline%\hline
+    \cline{2-3}  \cline{4-5}  \cline{6-7} \cline{8-9} \cline{10-11} \cline{12-13}
+        & Trans & Rot  & Trans & Rot  & Trans & Rot &Trans & Rot& Trans & Rot\\ 
+    & (\%) & (deg/m)  & (\%) & (deg/m)  & (\%) & (deg/m)& (\%) & (deg/m) & (\%) & (deg/m) \\
+    \midrule
+        09&11.92&0.0360&-&-&17.84&0.0678&26.93&0.0954&9.26&0.0229 \\
+        10&12.62&0.0343&8.11&0.0883&37.91&0.1778&24.69&0.0843&9.10&0.0221 \\
+    \midrule
+    % \textbf{Avg.} & \textbf{84.0}\\
+    Avg & 12.27 & 0.0351 &8.11 &0.0883  & 28.88 &0.1228 &25.81& 0.0899& 9.18&\textbf{0.0225}\\
+    % \hline
+    \bottomrule
+    \end{tabular}
+    \end{center}
+    \label{tab:kitti_compare}
+    \end{table*}
+    
+    \begin{table}[!htbp]
+        \caption{Comparison with Popular Geometry-based Methods}
+        \begin{center}
+        \begin{tabular}{c c c c c c c c c c c c c c c c c c}
+        \toprule
+        % \hline
+        \multirow{4}*{Seq} & \multicolumn{2}{c}{LIBVISO2} &  \multicolumn{2}{c}{ORBSLAM}& \multicolumn{2}{c}{\multirow{2}*{Our Method }}\\
+                           &  \multicolumn{2}{c}{(from \cite{Song2015MoncularScale})}&\multicolumn{2}{c}{(from \cite{raul2015orb})}  &\\
+        %  % \hline%\hline
+        \cline{2-3}  \cline{4-5}  \cline{6-7} 
+            & Trans & Rot  & Trans & Rot  & Trans & Rot\\ 
+        & (\%) & (deg/m)  & (\%) & (deg/m)  & (\%) & (deg/m)& \\
+        \midrule
+            09&4.04& 0.0143&15.30&0.0026& 9.26&0.0229\\
+            10&25.20 &0.0388&3.68&0.0048 &9.10&0.0221\\
+        \midrule
+        % \textbf{Avg.} & \textbf{84.0}\\
+        Avg &14.62 & 0.0266& 9.49&0.0037 &\textbf{9.18}&0.0225\\
+        % \hline
+        \bottomrule
+        \end{tabular}
+        \end{center}
+        \label{tab:kitti_compare_ge}
+        \end{table}
+    

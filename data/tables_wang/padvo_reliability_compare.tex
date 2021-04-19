@@ -1,0 +1,45 @@
+\begin{table*}[h]
+    \caption{可靠性性能对比实验记录}
+    \begin{center}
+    \begin{tabular}{c c c c c c c c c c c c c }
+    \toprule
+    % \hline
+    \multirow{3}{*}{Model}  &\multicolumn{2}{c}{KITTI 06} &\multicolumn{2}{c}{KITTI 08} & \multicolumn{2}{c}{KITTI 10}& \multicolumn{2}{c}{Avg}\\
+    %  % \hline%\hline
+    \cline{2-3}  \cline{4-5}  \cline{6-7} \cline{8-9} 
+    & Trans & Rot  & Trans & Rot &Trans & Rot& Trans & Rot\\ 
+    & (\%) & (deg/m)  & (\%) & (deg/m)& (\%) & (deg/m) & (\%) & (deg/m)\\
+    \midrule
+     PAD wo Reli &16.54&0.0566&19.34&0.0861&\textbf{13.19}&0.0349&16.35& 0.0592\\
+     PADVO       &\textbf{14.11}& 0.0669&\textbf{17.46}& 0.0829&16.25& 0.0705&\textbf{15.94}&0.0734\\
+    % \hline
+    \bottomrule
+    \end{tabular}
+    \end{center}
+    \label{tab:padvo_reli_compare_1}
+    \end{table*}
+    
+    \begin{table*}[h]
+      \caption{跨数据集可靠性性能对比实验记录}
+      \begin{center}
+      \begin{tabular}{c c c c c c c c c c c }
+      \toprule
+      % \hline
+    Training &\multicolumn{4}{c}{R-01} &\multicolumn{2}{c}{KITTI 09} \\
+    \cline{2-7}
+    Testing  &\multicolumn{2}{c}{Robot 02} &\multicolumn{2}{c}{KITTI 10} & \multicolumn{2}{c}{Robot 02}\\
+      %  % \hline%\hline
+      \cline{1-3}  \cline{4-5}  \cline{6-7} \cline{8-9} 
+      \multirow{2}{*}{Model}  & Trans & Rot  & Trans & Rot &Trans & Rot\\ 
+      & (\%) & (deg/m)  & (\%) & (deg/m)& (\%) & (deg/m) \\
+      \midrule
+       PAD wo Reli &16.23&0.0510&\textbf{23.73}&0.1189&29.76&0.0784 \\
+       PADVO       &\textbf{12.37}& 0.0361&24.20& 0.0705&\textbf{29.33}& 0.1663\\
+      % \hline
+      \bottomrule
+      \end{tabular}
+      \end{center}
+      \label{tab:padvo_reli_compare_2}
+      \end{table*}
+    
+    %lr=0.01 bs=40

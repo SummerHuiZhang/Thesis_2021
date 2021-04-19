@@ -1,0 +1,395 @@
+\chapter{基于同态性误差的深度视觉里程计损失函数设计方法}
+\label{ch:homovo}
+%\section{引言}
+% Problem
+本论文前面两章（第\ref{ch:mvosr}章和第\ref{ch:deepsr}章）所介绍方法为传统视觉里程计算法的延伸，通过工程化的方式利用场景中的绝对尺度信息计算单目运动估计的绝对尺度并抑制尺度漂移，其中第三章所介绍的基于深度估计的尺度计算方法通过场景绝对尺度的离线训练学习，降低了尺度计算时对路面平面假设的依赖。但前面两章的工作均需要初始视觉里程计算法提供相对尺度下的运动估计和特征测量，本章将以另外一种思路实现单目视觉里程计绝对计算：通过映射学习的方式，端到端的实现单目视觉里程计的初始估计的尺度计算。
+
+传统视觉里程计方法一般采用几何优化的方式计算相机运动：通过最小化重投影误差\cite{raul2015orb}或光度误差\cite{Engel-et-al-pami2018}
+求解相机运动矩阵。但传统方法的精准度依赖于准确地传感器标定和大量参数（包括特征类型选取、特征提取阈值、特征匹配阈值等）的手动调节，而不同场景往往需要不同的参数组合，
+且参数调节过程一般是工程师在环，如图\ref{fig:engineer_in_loop}所示，因为传统的视觉里程计方法的误差方程是不连续且相对参数不可导，无法直接利用梯度下降对这些参数进行调整，需要工程师观察算法效果然后根据经验和实际情况对关键参数进行手动调节。
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.95\columnwidth]{figures/homovo/engineer_in_loop-crop.pdf}
+    \caption{工程师在环示意图}
+    \label{fig:engineer_in_loop}
+  \end{figure}
+
+近年来，深度学习在图像分类、目标检测和语义分割等领域取得了很大的突破\cite{krizhevsky2012imagenet,girshick2015fast,long2015fully}，很多研究者开始借助深度学习方法解决视觉里程计问题，以端到端训练和学习方式避免繁琐复杂的手动参数调节。
+大多数基于学习的方法将视觉里程计定义为一个回归问题，拟合一个从两帧图像组成的图像对到相机运动的映射模型，拟合过程做出了如下假设:
+1)输入的两帧图像具有相同的维度($\mathbf{I}_1,\ \mathbf{I}_2 \in \mathbb{I}^{w\times h \times c}$)；2）输入图像内参一致（焦距$(f_x,f_y)$，光心$(c_x,c_y)$)；
+3)两帧图像存在重叠区域($\mathbf{I}_1 \cap \mathbf{I}_2 \neq \emptyset $)。
+
+在映射学习过程中，映射输入的两帧图像一般在通道维度直接叠加到一起组成图像对$\mathbf{I}_m^n=\{\mathbf{I}_m,\mathbf{I}_n\} \in \mathbb{I}^{w\times h \times 2c}$；映射输出的三维空间相机运动存在6个自由度，包括3个平移运动
+自由度和三个旋转运动的自由度。平移运动可直接用三维实数向量表示，而旋转运动本质上属于特殊正交群（Special Orthogonal Group）在表征方面较平移运动更为复杂，由于没有完美的表征方式存在，所以存在多种表征方式：欧拉角、四元数角轴（Axis-angle）
+以及旋转矩阵等。其中四元数和旋转矩阵使用冗余的表达方式表示三个自由度，在训练过程中需要附加额外约束(四元数的模值为1，旋转矩阵为正交阵)；
+剩余的两个表征方式中欧拉角存在诸多问题(死锁问题，不连续问题等等)，其中最为严重的问题是对于同一个旋转运动，欧拉角的表达方式不唯一，
+只有通过增加额外限定才能获取唯一解，限定包括但不限于旋转角的最大幅度；角轴模式使用三个数表示三维空间的旋转，
+其中这三个数所构成的向量表示旋转轴，向量的模表示绕着旋转轴的旋转角度，对于一种运动，角轴存在唯一的表达的方式。但角轴表示也存在一个问题，
+就是角轴中的三个元素如果单独来看，并不具备清晰明了的物理意义，这方面不如欧拉角。所以在实际情况中，如果已知幅度限制等可以得到欧拉角的
+唯一解，那么欧拉角是理想的旋转表征方式；如果无法得到欧拉角的唯一解，且不需要三个表征像素的物理意义，则可使用角轴表征方式。在本章算法中我们选择使用角轴模式。
+
+综上分析，在基于学习的视觉里程计问题中，网络模型的输出为三维实数表征的平移向量和三维角轴表示的旋转向量，
+这使运动估计的映射学习与深度神经网络所擅长的分割
+检测问题有着本质的差异。分割检测问题的输出属于标签变量，其意义为人为赋予，本身不具备任何数学意义，举例来说：对于一个分割问题，
+可以使用标签0表示道路、标签1表示建筑、标签2表示车辆，但0与1和建筑与交通并没有任何关系，道路(0)与建筑(1)的差异也不会比道路（0）与车辆（2）的差距小。
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.95\columnwidth]{figures/homovo/vo_diff.pdf}
+    \caption{运动估计与语义分割的区别}
+    \label{fig:vo_diff}
+  \end{figure}
+但视觉里程计的输出是具备数学意义的，其直接代表着相机的运动。若将输入图像对调换顺序，输出的运动应该变为之前的逆运动，而传统的网络结构和损失函数等并不能保证这一点。
+
+然而，大部分端到端的视觉里程计方法依然直接使用神经网络模型去学习运动映射模型，并没有考虑到视觉里程计输出的数学意义，本文认为这是当前基于学习的视觉里程计精度不高的一个重要原因，
+于是本文考虑映射性质重新定义基于学习的视觉里程计问题的损失函数（如图\ref{fig:homo_loss_problem}），使学习到的视觉里程计模型可以满足实际的映射关系：输入两张相同的图片，网络必然会输出单位运动（不运动）；
+将输入图像的顺序对调，那么将输出原运动的逆运动等等，即映射满足同态性模型（Homomorphism）。本章定义基于学习的视觉里程计问题为：
+\textit{基于学习的视觉里程计是一种通过数据拟合方法得到从连续图像对到相机运动的满足同态性关系的映射模型的映射学习问题。}
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\columnwidth,height=0.6666662\columnwidth]{figures/homovo/loss_crop_small.pdf}
+    \caption{损失函数示意图 }
+    \label{fig:homo_loss_problem}
+  \end{figure}
+
+本文主要研究映射同态性以及群性质中的封闭性（Closure)，
+单位元(Identity Element)和逆元(Inverse Element)对运动估计学习的影响。
+同时本文主要探索回答如下三个问题：1）卷积神经网络是否可以用来学习视觉里程计模型；2）如何定义合适的损失函数使卷积神经网络可以更好的学习；
+3）如何提升基于学习的单目视觉里程计精度。
+基于对上述问题的研究本文有如下贡献：
+\begin{enumerate}
+    \item 本文首次通过实验证明只用传统方法训练的卷积神经网络所表征的映射模型并不具备映射同态性，间接证明传统方法并没有学习到单目视觉里程计的运动本质；
+    \item 针对传统训练方法的问题，以及对视觉里程计映射方式的分析，本文提出了基于映射同态性的损失函数，并通过实验证明同态性损失函数可以使训练得到的神经网络模型满足视觉里程计的运动特性，同时提高了运动估计的精度；
+    \item 本文提出了基于图优化方法对网络输出的运动估计进一步提升的方法，同时实验证明本文所提出算法优于同时期其它端到端视觉里程计算法。
+\end{enumerate}
+
+本文结构安排如下：
+首先在第\ref{sec:homo_approach}节介绍算法的数学原理和实现方式；然后在第\ref{sec:homo_experiments}节，在KITTI数据集\cite{geiger2012kitti}定性和定量的评价本章算法；
+最后在\ref{sec:homo_conclusion}节总结本章工作。
+
+\section{基于同态性的单目视觉里程计方法}
+\label{sec:homo_approach}
+本节中首先在第\ref{sec:homo_method_loss}节介绍同态性损失函数的数学原理和设计方法，然后在第\ref{sec:homo_method_train}节和第\ref{sec:homo_method_predict}节分别介绍视觉里程计网络模型的训练和预测方法。
+\subsection{同态性损失函数}
+\label{sec:homo_method_loss}
+基于学习的视觉里程计从数学上讲属于监督学习中的回归问题（Regression），通过深度神经网络学习从图像对到相机运动的映射：
+\begin{equation}
+    F: \mathbb{R}^{2c\times w\times h} \to se(3)
+\end{equation}
+该映射可以表示为函数
+\begin{equation}
+    \mathbf{\tau} = \{\mathbf{t},\mathbf{r}\}= F(\mathbf{I}_m^n;\mathbf{\omega})
+    \label{eq:objective}
+\end{equation}
+其中模型$F$多层神经网络， 网络参数记为$\mathbf{\omega}$， $\mathbf{I}_m^n =\{\mathbf{I}_m,\mathbf{I}_n\}$ 为输入图像对，
+$\mathbf{\tau}\in se(3)$ 为机器人的平移运动和旋转运动组成的运动向量。
+为了更好描述输入图像对与输出相机运动之间的映射关系，本章将图像对定义为广义集合（Set）
+\begin{equation}
+   \Omega_{\mathbf{I}_m^n} = \{\mathbf{I}_m^n\} \quad \mathbf{I}_m^n=\text{stack}(\mathbf{I}_m,\mathbf{I}_n),\quad \mathbf{I}_m,\  \mathbf{I}_n \in \Omega_{\mathbf{I}}
+\end{equation}
+同时定义在广义图像对集合上的二元运算$\otimes$ 
+\begin{equation}
+    \mathbf{I}_m^n = \mathbf{I}_m^t \otimes\mathbf{I}_t^n
+\end{equation}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\textwidth]{homovo/operator.png}
+    \caption{二元运算示意图}
+    \label{fig:homo_operator}
+\end{figure}
+其表示图像对$\mathbf{I}_m^t$和$\mathbf{I}_t^n$可以通过二元运算$\otimes$得到$\mathbf{I}_m^n$，其中图像$\mathbf{I}_t$同时存在于两个图像对中且处于不同的次序，这是$\otimes$运算有意义的必然条件（如图\ref{fig:homo_operator}）。
+广义集合 $\{\mathbf{I}_m^n\}$和所定义的二元运算$\{\mathbf{I}_m^n,\otimes\}$可构成一个广义群(Group)，可以证明其满足群的四条性质: 
+\begin{enumerate}
+    \item 封闭性（Closure）：$\mathbf{I}_m^n \in \Omega_{\mathbf{I}_m^n}\quad \forall \mathbf{I}_m^t,\ \mathbf{I}_t^n \in  \Omega_{\mathbf{I}_m^n}$ \\
+    \textbf{证明}： 
+    \begin{enumerate}
+        \item $\mathbf{I}_m^t \in \Omega_{\mathbf{I}_m^n} \Rightarrow \mathbf{I}_m, \mathbf{I}_t \in \Omega_{\mathbf{I}}$
+        \item $\mathbf{I}_t^n \in \Omega_{\mathbf{I}_m^n} \Rightarrow \mathbf{I}_t, \mathbf{I}_n \in \Omega_{\mathbf{I}}$
+        \item $\mathbf{I}_m, \mathbf{I}_n \in \Omega_{\mathbf{I}}\Rightarrow  \mathbf{I}_m^n \in \Omega_{\mathbf{I}_m^n} $
+    \end{enumerate}
+    \item 结合律（Associativity）：$\mathbf{I}_m^t\otimes (\mathbf{I}_t^s \otimes \mathbf{I}_s^n) = (\mathbf{I}_m^t \otimes \mathbf{I}_t^s )\otimes \mathbf{I}_s^n $\\
+    \textbf{证明}：
+    \begin{enumerate}
+        \item $\mathbf{I}_m^t\otimes (\mathbf{I}_t^s \otimes \mathbf{I}_s^n) = \mathbf{I}_m^t\otimes \mathbf{I}_t^n = \mathbf{I}_m^n$ 
+        \item $(\mathbf{I}_m^t \otimes \mathbf{I}_t^s )\otimes \mathbf{I}_s^n = \mathbf{I}_m^s\otimes \mathbf{I}_s^n = \mathbf{I}_m^n$
+        \item $\text{(a)},\text{(b)} \Rightarrow \mathbf{I}_m^t\otimes (\mathbf{I}_t^s \otimes \mathbf{I}_s^n) = (\mathbf{I}_m^t \otimes \mathbf{I}_t^s )\otimes \mathbf{I}_s^n$
+    \end{enumerate}
+    \item 单位元（Identity）：$\exists \mathbf{I}_m^m,\ \mathbf{I}_n^n \quad  \mathbf{I}_m^m \otimes \mathbf{I}_m^n = \mathbf{I}_m^n\otimes \mathbf{I}_n^n = \mathbf{I}_m^n$
+    \item 逆元 （Invertibility）：$\mathbf{I}_m^n\otimes \mathbf{I}_n^m = \mathbf{I}_m^m$\\
+    \textbf{证明}
+    \begin{enumerate}
+        \item $\forall \mathbf{I}_m^n \in \Omega_{\mathbf{I}_m^n},\  \exists  \mathbf{I}_n^m \in \Omega_{\mathbf{I}_m^n}$
+        \item $\mathbf{I}_m^n\otimes \mathbf{I}_n^m = \mathbf{I}_m^m = \mathbf{I}_{iden}$
+    \end{enumerate}
+\end{enumerate}
+
+其中单位元被定义为 $\mathbf{I}_{iden} = \{\mathbf{I}_n,\mathbf{I}_n\}=\mathbf{I}_n^n$，即任意两个相同的图像组成的图像对；
+$\mathbf{I}_m^{n}$ 的逆元$ -\mathbf{I}_m^n = \{\mathbf{I}_n,\mathbf{I}_m\} = \mathbf{I}_n^{m}$，即将图像对的图像顺序对调。
+已知网络输出的运动矩阵属于特殊欧式群（Special Euclidean Group）$SE(3)$，将输入图像对定义为群之后，视觉里程计学习被公式化为群的映射学习
+\begin{equation}
+    F: \Omega_{\mathbf{I}_m^n} \to se(3)
+\end{equation}
+显然从群 $\{\Omega_{\mathbf{I}_m^n},\otimes\}$ 到特殊欧式群$SE(3)$的映射满足同态性：
+ \begin{equation}
+     \exp(F(\mathbf{I}_m^n\otimes\mathbf{I}_n^t))=\exp(F(\mathbf{I}_m^n))\exp(F(\mathbf{I}_n^t))
+ \end{equation}
+ 其中 $\mathbf{T} = \exp(\{\mathbf{t},\mathbf{r}\})$ 为李群（Lie Group）函数可以将李代数空间的运动向量$\{\mathbf{t},\mathbf{r}\} \in se(3)$
+ 映射到李群空间的运动矩阵 $\mathbf{T} \in SE(3)$ \cite{onishchik1993lie}。
+
+根据同态性关系可以得到如下约束：
+\begin{equation}
+    \exp(F(\mathbf{I}_{iden})) = \mathbf{E} 
+\end{equation}
+\begin{equation}
+    \exp(F(-\mathbf{I}_m^{n}))\exp(F(\mathbf{I}_m^{n})) = \mathbf{E} 
+\end{equation}
+\begin{equation}
+    \exp(F(\mathbf{I}_{m}^{n}))\exp(F(\mathbf{I}_{n}^{t})) = \exp(F(\mathbf{I}_{m}^{t}))
+\end{equation}
+其中 $\mathbf{E}$ 为特殊欧式群$SE(3)$中的单位阵.
+
+考虑到如上性质，可以定义了三个对应的损失函数：单位估计损失函数、逆运算损失函数和封闭损失函数。
+\paragraph{单位估计损失函数} 
+根据两个群之间的映射关系，当输入为图像对广义群中的单位元$\mathbf{I}_i^i = \{\mathbf{I}_i,\ \mathbf{I}_i\} \quad \forall \mathbf{I}_i \in \Omega_{\mathbf{I}}$时，深度神经网络所输出的运动应该为特殊欧式群中的单位元，于是我们可以定义输出运动与单位运动之间的差异定义损失函数：
+\begin{equation} 
+    L_{iden} = \sum_{i=1}^{n}\|F(\mathbf{I}_{i}^{i})-\{0,0\}\|_2 = \sum_{i=1}^{n}\|F(\mathbf{I}_{i}^{i})\|_2 
+    \label{eq:identity_loss}
+\end{equation}
+其中$n$为所有训练样本。
+\paragraph{逆运算损失函数}
+当我们将输入的图像对$\mathbf{I}_m^n$做逆运算得到$\mathbf{I}_n^m = -\mathbf{I}_m^n$，网络对应的输出也会相应的求逆运算。根据这一性质，可定义逆运算的损失函数为：
+\begin{equation}
+    L_{inv} = \sum_{i=1}^{n-1} \|\log(\exp(F(\mathbf{I}_{i}^{i+1}))\exp(F(\mathbf{I}_{i+1}^{i})))\|_2
+    \label{eq:inverse_loss}
+\end{equation}
+其中 $\{\mathbf{t},\mathbf{r}\} = \log(\mathbf{T})$ 为李群到对应李代数的映射函数将运动矩阵 $\mathbf{T} \in SE(3)$ 
+映射为运动向量 $\{\mathbf{t},\mathbf{r}\} \in se(3)$。因为运动与逆运动乘积应为单位运动，所以可将其乘积与单位运动之间的差异定义为损失函数。
+
+\paragraph{封闭性损失函数} 描述给定三组图像对$\mathbf{I}_m^n$，$\mathbf{I}_n^t$ 和$\mathbf{I}_m^t$，可知$\mathbf{I}_m^t = \mathbf{I}_m^n \otimes \mathbf{I}_n^t$，根据映射关系的同态性，可以得到
+\begin{equation}
+    \exp(F(\mathbf{I}_m^t)) = \exp(F(\mathbf{I}_m^n))\exp(F(\mathbf{I}_n^t))
+    \label{eq:closure_con}
+\end{equation}
+在实现过程中，可使用三张连续的图片$\mathbf{I}_i$，$\mathbf{I}_{i+1}$，$\mathbf{I}_{i+2}$构建图像对$\mathbf{I}_i^{i+1}$，$\mathbf{I}_{i+1}^{i+2}$ 和$\mathbf{I}_i^{i+2}$。然后根据
+公式\eqref{eq:closure_con}，构建损失函数。
+\begin{equation}
+    L_{clo} = \sum_{i=1}^{n-2} \|\log(l_{i,i+1,i+2})\|_2
+    \label{eq:closure_loss}
+\end{equation}
+$$ l_{i,i+1,i+2} = \exp(F(\mathbf{I}_{i}^{i+1}))\exp(F(\mathbf{I}_{i+1}^{i+2}))\exp(F(\mathbf{I}_{i}^{i+2}))^{-1}$$
+除上述定位的三个同态性损失函数之外，本章同时使用了其它监督学习方法中使用的L2误差\cite{wang2017deepvo}
+\begin{equation}
+    L_2 = \sum_{i=1}^{n}\|F(\mathbf{I}_{i}^{i+1})-\{\mathbf{\underline{t}}_i,\mathbf{\underline{r}}_i\}\|_2
+    \label{eq:l2_loss}
+\end{equation}
+其中$\{\mathbf{\underline{t}},\mathbf{\underline{r}}\}$ 为旋转和平移运动的真实值。
+所以总损失函数为：
+\begin{equation}
+    L = L_2 + \alpha_1 L_{iden} +\alpha_2L_{inv}+\alpha_3L_{clo}
+    \label{eq:loss}
+\end{equation}
+其中$\alpha_1$,$\alpha_2$和$\alpha_3$为三个同态性损失函数的权重系数。
+%We simplely set the weight of each loss to 1 though better performance may be achieved by adjusting the weight parameters.
+\subsection{训练方法}
+\label{sec:homo_method_train}
+%
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\columnwidth]{figures/homovo/homo_structure.pdf}
+    \caption{网络架构示意图}
+    \label{fig:homo_structure}
+  \end{figure}
+
+本文的核心贡献为损失函数的设计，网络架构主要基于\cite{zhou2017unsupervised}提出的多层卷积网络，网络架构如图\ref{fig:homo_structure}所示，网络主体由卷积层构成，卷积核均为正方形卷积核，每个卷积层后都经过一个反射线性单元（ReLU），网络的输出层为全局均值池化层（Global Average Pooling）。本章使用单通道灰度图像作为输入，并将其压缩为原始尺寸的一半，网络输出为归一化之后的运动向量
+\begin{equation}
+\{\mathbf{\underline{r}},\mathbf{\underline{t}}\} = (\{\mathbf{\underline{r}},\mathbf{\underline{t}}\} - \mu(\{\mathbf{\underline{r}},\mathbf{\underline{t}}\}))/\sigma(\{\mathbf{\underline{r}},\mathbf{\underline{t}}\})
+\end{equation}
+其中 $\mu(\{\mathbf{\underline{r}},\mathbf{\underline{t}}\})$ 和$\sigma(\{\mathbf{\underline{r}},\mathbf{\underline{t}}\})$
+为训练集中运动向量的均值和标准差。 权重参数 $\alpha_1$,$\alpha_2$和$\alpha_3$均设为1。
+使用Adam优化器，迭代优化损失函数并获取神经网络中的参数：
+\begin{equation}
+    \mathbf{\omega} = \argmin_{\mathbf{\omega}}\left( L_2 + \alpha_1 L_{iden} +\alpha_2L_{inv}+\alpha_3L_{clo}\right)
+\end{equation}
+
+\subsection{估计方法}
+\label{sec:homo_method_predict}
+由于在训练阶段增加了同态性损失函数，来强制保证所学习到的网络可以满足同态性映射约束。在网络模型训练好之后
+可以利用这一性质来进一步优化所估计的运动。首先使用所学习到的模型估计出正向运动$T_i^{i+1}=\exp(F(\mathbf{I}_i^{i+1};\mathbf{\omega}))$，反向运行
+$T_{i+1}^i=\exp(F(\mathbf{I}_{i+1}^i;\mathbf{\omega}))$以及隔帧运动$T_i^{i+2}=\exp(F(\mathbf{I}_i^{i+2};\mathbf{\omega}))$，然后根据这些运动之间的相互约束如图\ref{fig:homo_infer}构建图模型，对所估计的运动进行联合优化，得到更精准的运动估计。
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\columnwidth]{figures/homovo/homo_infer-crop.pdf}
+    \caption{运动估计图优化示意图}
+    \label{fig:homo_infer}
+  \end{figure}
+
+图中三个节点$\mathbf{P}_i$，$\mathbf{P}_{i+1}$和$\mathbf{P}_{i+2}$分别为三个时刻的位姿，每条边 ${e}_{ij}$ 约束运动
+$\mathbf{T}_{i}^{j}$ 和姿态$\mathbf{P}_i$以及 $\mathbf{P}_j$ 
+
+\begin{equation}
+    e_{ij} = \|\mathbf{P}_i\mathbf{T}_{i}^{j}\mathbf{P}_j^{-1}\|_2
+\end{equation}
+总能量函数为六条边的能量总和
+\begin{equation}
+    E = \sum_{i,j \in \{t,t-1,t-2\}} e_{ij}
+\end{equation}
+在优化过程中，由于无法获得每个运动的可靠性，所以信息增益矩阵设为相同，此外$\mathbf{P}_i$固定，通过最小化能量函数$E$获取优化之后的$\mathbf{P}_{i+1}$和$\mathbf{P}_{i+2}$。
+\begin{equation}
+    \label{eq:optimize_out}
+    \mathbf{P}_{i+1},\mathbf{P}_{i+2} = \argmin E
+\end{equation}
+
+\section{同态性视觉里程计验证实验}
+\label{sec:homo_experiments}
+本节在KITTI视觉里程计测评数据集\cite{geiger2012kitti}上，设计了三个实验用以验证本章所提出算法的有效性：首先在第\ref{sec:training_loss}节，验证本文算法所基于的两个基本假设，包括传统损失函数的局限性假设和本文基本思想的可行性假设；
+然后在第\ref{sec:exp_homo}节，通过对比实验证明本文所提出的同态性损失函数的有效性；最后在第\ref{sec:exp_homo_compare}节，将本文结果与其它算法进行比较。所有定量比较均使用相对位姿误差（Relative Pose Error，RPE） \cite{geiger2012kitti}作为评价指标，用以评价不同距离下相对定位误差的平均值。
+
+
+
+在算法实现方面，本章主要包括两个部分，分别为用于映射学习的深度学习部分和用于预测优化的图优化部分。本章使用Python程序设计语言基于PyTorch深度学习框架\cite{paszke2017automatic}实现本文算法中的深度学习部分，在训练过程中学习率设置为0.01，网络训练100个周期，整个训练周期内
+学习率不做调整。图优化部分使用C++程序设计语言基于图优化开源框架g2o\cite{kummerle2011g}实现，为保证程序设计的整体性和两个模块之间相互调用的便捷性，使用PyBind11将优化部分封装成Python接口。在测试过程中，使用装置Ubuntu操作系统配备因特尔Intel Core i7处理器和英伟达NVIDIA GeForce GTX 1060显卡的笔记本电脑，运动估计时每帧大约耗时6.3毫秒，占用显存423MB。
+
+%and compiled to be a python library by PyBind11.
+\subsection{同态性损失函数验证假设}
+%
+\label{sec:training_loss}
+本节将在第一个实验验证本文算法所依赖的两条假设：
+1）仅依靠$L2$损失函数，卷积神经网络无法拟合出满足映射同态性性质运动估计模型；
+2）使用同态性损失函数，网络可以正常收敛。
+大多数基于卷积神经网络的视觉里程计映射学习方法一般仅使用$L2$损失函数，在映射学习过程中忽略了运动估问题本身的同态性约束，本文提出仅使用$L2$损失函数训练出来的网络模型并不能满足运动估计所必须具备的性质，若使用$L2$损失函数训练出来的网络可以满足同态性映射模型，那本文损失函数的设计则没有必要性，所以假设1是本文工作的必要性假设；此外，在增加了复杂的同态性损失函数之后，网络存在无法收敛的可能性，若无法收敛则说明卷积神经网络在一定程度上不能去学习视觉里程计的映射的函数，若无法学习，则损失函数设计则不具备可行性，所以假设2是本文工作的可行性假设。
+
+\subsubsection{L2损失函数局限性验证}
+\label{sec:homo_assumation_1}
+为了验证$L2$损失函数的局限性，需要设计实验证明使用$L2$损失函数学习到的映射模型并不能满足同态性。本节选择验证其是否可以满足$F(\mathbf{I}_n^m;\mathbf{\omega})=F(\mathbf{I}_m^n;\mathbf{\omega})^{-1}$，在具体实现上，本节使用KITTI视觉里程计00-08序列作为训练集，使用$L2$损失函数训练映射模型100个周期（epoch），在训练过程中同时记录网络的损失函数下降曲线以及不同周期的训练集正向误差和训练集反向误差。
+如图\ref{fig:homo_training_loss}中红线所示，网络损失函数逐渐减小，代表网络可以正常收敛；然而在模型的正向训练误差（图\ref{fig:homo_training_error}中红色实线）随着训练逐渐
+减小时，模型的反向训练误差（图\ref{fig:homo_training_error}中红色虚线）却没有变小。反向误差反应所训练模型对图像反向运动的预测能力：当调转数据图像对的顺序，网络理论上可以输出原运动的逆运动，即$F(\mathbf{I}_n^m;\mathbf{\omega})= F(\mathbf{I}_m^n;\mathbf{\omega})^{-1}$。综上，实验证明仅基于$L2$损失函数训练出来的卷积神经网络并无法直接具备这一性质，进而可以得出结论：
+卷积神经网络无法在L2损失函数下学习到满足同态性性质的运动估计模型，本文的必要性假设成立。
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{homovo/training_loss_compare.pdf}
+    \caption{损失函数}
+    \label{fig:homo_training_loss}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{homovo/training_error_compare.pdf}
+        \caption{测试误差}
+    \label{fig:homo_training_error}
+    \end{subfigure}
+    \caption{假设验证训练结果图}
+    {\label{fig:homo_assumation}}
+    \end{figure}
+    %
+\subsubsection{同态性损失函数可行性验证}
+同态性损失函数的可行性验证相对简单，只需要证明网络在同态性损失函数的训练下可以正常收敛即可。本节同样使用KITTI：00-08作为训练集，训练卷积神经网络，网络架构与验证1一致，但损失函数更改为融合同态性误差的损失函数（即公式\eqref{eq:loss}）。网络的损失函数曲线如图\ref{fig:homo_training_loss}中绿线所示，训练集正向误差和反向误差分别如图\ref{fig:homo_training_error}中绿色实线和虚线所示。从图中可以看出网络可以正常收敛，即本文的可行性假设成立。同时，我们观察到增加同态性损失函数之后的其它两个现象：
+1）网络的反向训练误差同样逐渐减小；2）网络正向误差下降的也更快。这两个现象可以定性的说明同态性损失函数对运动估计的提升效果，下一节的实验中将具体分析同态性损失函数对运动估计学习的影响。
+
+
+
+\subsection{同态性损失函数有效性验证实验}
+\label{sec:exp_homo}
+为证明本文提出的同态性损失函数的有效性，本节设计对比实验来分析不同损失函数下的测试误差。在具体实现上，控制网络结构相同，训练和测试数据相同（00-08用作训练，09用来测试）以及其它所有超参（Hyper Parameter）相同，仅按照损失函数的不同分为三个实验组，分别为：
+\begin{enumerate}
+    \item \textit{正向训练组（Forward Training）}: 训练过程中仅使用$L2$损失函数 (公式\eqref{eq:l2_loss})； 
+    \item \textit{正反向训练组（Cycle Training）}: 使用$L2$损失函数和逆元损失函数(公式\eqref{eq:inverse_loss})；
+    \item \textit{群训练组（Group Training）}: 使用$L2$损失函数和本文提出的全部损失函数，包括逆元损失函数、单位元损失函数 (公式\eqref{eq:identity_loss})、和
+    封闭性损失函数(公式\eqref{eq:closure_loss})。
+\end{enumerate}
+将每个实验组训练100个周期，并将每个周期得到的模型通过三种测试模式在KITTI-09上测试，
+1）\textit{正向测试（Forwatd Testing）}：正向输入训练数据；
+2）\textit{反向测试（Backward Testing）}：反向输入训练数据；
+3）\textit{优化测试（Backward Testing）}：使用本文提出的后端优化方式对输出结果进行优化后测试。
+测试误差曲线记录于图\ref{fig:homo_loss_compare}。
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{homovo/backward_testing_compare.pdf}
+        \caption{反向测试结果}
+        \label{fig:backward_testing}
+    \end{subfigure}
+    \vspace*{2mm}
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{homovo/cycle_optimized.pdf}
+        \caption{正反向测试优化}
+        \label{fig:cycle_opti}
+    \end{subfigure}
+    \vspace*{2mm}
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{homovo/group_optimized.pdf}
+        \caption{群训练优化}
+        \label{fig:group_opti}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{homovo/forward_testing_compare.pdf}
+        \caption{正向测试}
+        \label{fig:forward_testing}
+    \end{subfigure}
+    \caption{不同损失函数的测试结果图}
+    {\label{fig:homo_loss_compare}}
+\end{figure}
+同时，为了定量地分析结果，本节评价了每个实验组最后30个训练周期的平均测试误差，并记录于表\ref{tab:loss_function}。
+\input{data/tables/homovo_training_method_table.tex}
+
+从图\ref{fig:homo_loss_compare}中曲线及表中数据可以观察到：
+1）前向训练组训练得到网络模型的前向测试误差不断减小（图 \ref{fig:forward_testing}中红色虚线），而反向测试误差
+并没有持续降低(图\ref{fig:backward_testing}中红色实线)，收敛于60\%左右。
+由此可知，前向训练的网络仅可以进行前向测试，而无法估计反向数据的运动，即前向训练网络无法直接泛化到反向数据。这一观察再次通过实验证明第\ref{sec:training_loss}所验证的$L2$损失函数局限性假设。
+2）正反向训练组和群训练组得到网络模型的前向测试的误差（图\ref{fig:forward_testing}中的黄色和绿色虚线)和反向测试误差（图\ref{fig:backward_testing}中的黄色和绿色实线）同时都在减小。这一观察可以说明同态性损失函数训练出来的网络模型可以同时估计前向运动和反向运动，在一定程度上可以满足同态性。
+3）对于正反向模型和群模型，根据其直接输出结果，利用所提出的后端图优化方法对其进行优化（优化方法描述于公式\eqref{eq:optimize_out})，
+发现优化的结果被进一步提升(如图\ref{fig:cycle_opti}和图\ref{fig:group_opti})。
+4）正反向模型和群模型的测试前向测试效果均优于前向模型，群模型的测试结果优于正反向模型（见表\ref{tab:loss_function}）。
+
+基于上述分析可以得出如下结论：正反向训练和群训练可以使模型具备预测反向运动的能力；二者可以提高前向估计的精度；
+正反向训练和群训练因考虑映射的同态性而提供了结果后期优化的可能性，且数据表明优化之后精度得到了提升。总而言之，本文提出的同态性损失函数有效。
+
+
+%
+%
+
+
+\subsection{与同时期其它算法精准度比较}
+\label{sec:exp_homo_compare}
+%
+\input{data/tables/homovo_kitti_compare_table}
+本节将本章提出的方法与其它算法比较以证明本方法的有效性。训练数据与其它方法
+\cite{zhou2017unsupervised,zhan2018unsupervised,yin2018geonet}
+一致：使用KITTI数据集中的序列00-08训练（共九条轨迹），KITTI数据集中的09-10测试（共两条轨迹）。在测试集中的轨迹可视化于图\ref{fig:path_result}，图中同时可视化了Zhang等人的工作和ORB-SLAM2不带闭环修正的结果。从图中可以看出，本文算法所预测轨迹更接近于真实轨迹。
+\begin{figure}[h]
+    \centering
+    \mysubfigure[09]{0.48}{
+    \includegraphics[width=\textwidth]{homovo/path/09_compare_orb.pdf}
+    }{\label{fig:09_path}}
+    \mysubfigure[10]{0.48}{
+    \includegraphics[width=\textwidth]{homovo/path/10_compare_orb.pdf}
+    }{\label{fig:10_path}}
+    \caption{与其它算法轨迹对比图}
+    {\label{fig:path_result}}
+    \end{figure}
+为了定量的评测算法的性能，本节将测试结果使用RPE误差评测\cite{geiger2012kitti}，并将测试误差
+记录于表\ref{tab:homovo_kitti_compare}和表\ref{tab:homovo_kitti_compare_geo}中。
+
+由于本文算法使用监督学习模式训练，且测试数据集与训练数据集尺度分布相近，所以无需做尺度对齐。
+
+由于非监督学习在相对尺度空间进行学习，无法直接学习到绝对尺度，在使用RPE评测Zhou等人的算法
+\cite{zhou2017unsupervised}以及GeoNet \cite{yin2018geonet}之前，首先对结果进行了尺度对齐。
+从表\ref{tab:homovo_kitti_compare}中看出，本章方法的精度要高于这两种方法。
+Zhan等人\cite{zhan2018unsupervised}也是非监督方法，但其使用双目数据进行训练，可以通过已知的基线长度学习到运动的绝对尺度，
+在评测时不对其做尺度对齐，由表\ref{tab:homovo_kitti_compare}中数据可以看出，本文算法优于Zhan等人的算法，精度提高约40\%。
+
+由以上分析可以初步得出结论，尽管非监督训练方法可以不依赖于数据标签，提高了训练便捷性，但其精度相对较为弱势。
+
+DeepVO \cite{wang2017deepvo} 是截至本工作完成时的精度最高的算法，其使用监督学习模式，融合CNN和RNN，考虑到了视觉运动估计的
+上下文信息。为了使结果具备可比性，本节采用与之相同的训练数据（KITTI 00，02，08和09），在KITTI10的测试RPE误差为8.08\%和0.0123(deg/m)。
+稍微优于DeepVO。可知在本文提出的同态性损失函数训练下，即使考虑上下文信息，也可以得到很好的精度。
+
+此外本节还将算法与传统的视觉里程计算法进行比较，比较结果如表\ref{tab:homovo_kitti_compare_geo}所示，
+可知，本章算法优于LIBVISO\cite{Geiger2011IV} ，
+与ORB-SLAM单目版本\cite{raul2015orb}不相上下。
+
+\section{本章小结}
+\label{sec:homo_conclusion}
+本章提出了一种基于映射同态性的视觉里程计损失函数设计方法。我们研究了运动估计网络的输入图像对于输出运动之间的映射关系，从数学原理上分析出运动估计模型应具备映射同态性，提出直接使用深度神经网络通过普通损失函数学习出的运动估计模型无法满足映射关系，并通过设计实验证明这一论点。
+在此基础上，依据同态性约束和群的封闭性、单位元和逆元等性质，创新地提出了三个同态性损失函数，并通过实验证明同态性损失函数的引入可使网络学习到的映射模型可以满足同态性关系。同时，依据运动估计网络的同态性，在运动估计阶段增加了图优化模块，并通过实验证明图优化模块可以进一步提高运动估计的精度。此外我们将所提出的算法与同时期其它基于学习以及基于几何计算的传统方法进行对比，本文提出的运动估计网络取得了更好的结果。
+

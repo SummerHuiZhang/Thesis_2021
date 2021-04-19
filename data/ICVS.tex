@@ -1,0 +1,346 @@
+\chapter{动态环境中绝对定位之单目深度特征提取与压缩}
+\label{sec:extract}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.95\columnwidth]{introduction/ImageRetrieval.pdf}
+  \caption{基于图像检索的单目绝对定位示意图}  
+  \label{fig:ImageRetrieval}
+\end{figure}
+
+如何在动态环境中快速准确地自主定位机器人是机器人路径规划、导航、避障等一些问题的保障。与深度学习相结合的单目视觉定位已经获得了令人难以置信的结果。然而，从深度学习中提取的特征维度巨大，匹配算法也很复杂。如果自动驾驶汽车只能在单一场景中进行训练，将很难满足复杂多变的现实场景。如何减少尺寸与精确的定位是困难之一。本章提出了一种新的方法，通过对动态环境中的大尺度图像训练，来探索满足一定精度要求的深度特征维度。我们从AlexNet网络中提取特征并通过IPCA减少了特征的维度，更重要的是，我们用核化方法、归一化和形态学等方法处理得到匹配矩阵，消除了图像的冗余匹配与歧义。最后，我们在跨季节的动态环境数据集Norland中在线检测最佳匹配序列，证明了经过特征降维后该深度特征仍然能够表达图像信息，仍可以快速定位机器人。
+
+在过去的几年里，为了找到不受大幅度变化影响又能表达场景信息的特征，人们已经研究了各种类型的特征用于本地化\cite{cummins2008fab,sunderhauf2011brief,milford2012seqslam,arroyo2014fast}。图像描述符可分为基于特征的局部特征和整体的图像全局特征。基于特征的描述符在计算机视觉中起着重要的作用。到目前为止，一些手工制作的特征已经获得了一定的成功\cite{lowe2004distinctive,tola2008fast,SURF2006surf,ORB2011orb}。然而，机器人在动态环境中往往无法通过这些手工制作的特征来进行定位。
+\begin{figure}[htbp]
+ \centering
+ \begin{subfigure}[h]{0.23\textwidth}
+ \includegraphics[width=\textwidth]{ICVS/RainNight.jpg}
+ \label{fig:RainNight}
+  \caption{Rainy night}
+ \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth}
+ \includegraphics[width=\textwidth]{ICVS/RainDay.jpg}
+  \caption{Rainy daytime}
+  \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth}
+ \includegraphics[width=\textwidth]{ICVS/Shadow.jpg}
+  \caption{Shadows of trees and buildings and others}
+ \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth}
+ \includegraphics[width=\textwidth]{ICVS/Dynamic.jpg}
+  \caption{Moving objects}
+  \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth}
+ \includegraphics[width=\textwidth]{ICVS/Dusk.jpg}
+  \caption{Dusk}
+ \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth}
+ \includegraphics[width=\textwidth]{ICVS/Light.jpg}
+ \caption{Light outsides}
+ \end{subfigure}
+ \label{fig:Environments}
+  \caption{复杂多变的动态环境。}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.95\columnwidth]{ICVS/FrameWork1.pdf}
+  \caption{基于AlexNet的深度特征单目图像匹配定位框架。}  
+  \label{fig:Framework}
+\end{figure}
+图像全局描述符根据图像不变特征表达整幅图像信息。最近的结果表明，从卷积神经网络中提取的通用描述符非常强大\cite{sharif2014cnn}。2012年，CNN在AlexNet大规模视觉识别挑战赛（ILSVRC）上获得了令人难以置信的准确性\cite{krizhevsky2012imagenet}。这表明，从CNN中提取的特征在分类上明显优于手工制作的特征。他们在120万张标注的图像上训练了一个名为AlexNet的大型CNN。对于图像根据AlexNet提取的特征进行分类，我们也可以根据这些特征来定位机器人。\cite{donahue2014decaf}研究表明来自CNN中层的特征可以更有效地消除数据集偏差。\cite{sunderhauf2015performance}比较了来自不同层的特征的性能。他们的结果表明，来自ConvNet层次结构中的中间层的特征对一天中的时间、季节或天气条件引起的外观变化表现出鲁棒性。来自Conv3层的特征在面对极端外观变化时表现得相当好。然而，CNNs特征的主要障碍是昂贵的计算成本和内存资源，这对实时性能是一个很大的挑战。如果我们将巨大维度的图像特征与记录的数据集逐一在线比较，将耗费大量的时间，因此有必要降低CNNs特征的计算成本和内存资源。所以有必要降低这些向量的维度。\cite{arroyo2016fusion}将CNN特征的冗余数据压缩成一个可控的比特数。通过应用简单的压缩和二值化技术来减少最终的描述符，以便使用汉明距离进行快速匹配。压缩意味着丢失一定量的信息。但是，我们可以尽可能地保留数据之间的重要关系。我们通过在数据分析中广泛使用的增量PCA(Principal Component Analysis)来实现这一目的。在本章中，我们提出了一种新型的机器人跨季节动态环境定位算法。
+
+本章的主要贡献有：
+1）我们通过深度学习特征的维度减少，提出了一种新型的动态环境下的定位系统。
+2）我们减少了从AlexNet中提取的特征的维度。它不仅可以加快计算速度，而且可以减少从数据集引起的图像与大多数在线图像匹配的混乱匹配。
+3)代替复杂的数据关联图，通过对匹配矩阵进行形态学处理，在线找到最佳匹配序列。
+\section{单目视觉绝对定位深度特征提取方法}
+在本文中，我们提出一个新的视觉定位图像特征提取方法，它结合CNNs网络特征表示的优势，在不同季节等环境条件下执行基于单目视觉的鲁棒定位，正如方法框架图（图\ref{fig:Framework}）所示，我们的工作过程如下：
+1）从AlexNet的Conv3中提取特征，并通过IPCA进行图像特征降维。
+2) 将在线图像的向量与已存数据集的向量通过余弦距离逐一匹配。通过核化方法对匹配矩阵进行归一化，以减少因大部分在线图像匹配的数据集混乱造成的歧义。
+3）对匹配图像进行图像处理，包括图像二值化、图像侵蚀等。
+4）设置参数，通过RANSAC（随机样本共识）在线寻找最佳匹配序列。
+本文的研究过程如下。 在第3节中，我们描述了我们的方法的细节。在第4节中，我们在Norland数据集上做了一个动态环境下的在线定位实验。在第5节中，我们对结果和未来的工作进行了讨论。
+\subsection{基于AlexNet网络的深度学习特征提取}
+\begin{algorithm} 
+ \caption{视觉定位算法}
+ \KwIn{视觉地图$\{[\mathbf{f},\mathbf{l}]\}_{i=1}^{n}$, where $\mathbf{f}$ is the feature vector of image on location extracted from AlexNet;  $\mathbf{l}$ and $n$ is the size of visual map; Current image sequences $\{\mathbf{I}\}_{j=t-m+1}^{t}$, where $m$ is the sequence size; last robot location $\hat{l}_{t-1}$}
+ \textbf{Initialize}: $\hat{l}_t = \hat{l}_{t-1}$
+ \KwOut{机器人当前位置$l_t$}
+  \For{$t=2$ to n}
+  { 计算图像$\{\mathbf{I}\}_{j=t-m+1}^{t}$的特征表示$\{\mathbf{\hat{f}}\}_{j=t-m+1}^{t}$  \\
+    计算匹配矩阵$\mathbf{M}$，其中每个元素$\mathbf{M}_{ij}=\mathcal{F}(\mathbf{f}_i,\mathbf{\hat{f}}_j)$   \\
+    矩阵归一化$\mathbf{M}_{ij}=\frac{255\left(\mathbf{M}_{ij}-\mathbf{M}_{min}\right)}{\mathbf{M}_{max}-\mathbf{M}_{min}}$ take $\mathbf{M}$ as a gray image $\mathbf{I}_g$\\
+    用合适的阈值对矩阵$\mathbf{I}_g$进行二值化，得到$\mathbf{I}_b$\\
+    对匹配图像$\mathbf{I}_b$ 进行处理得到$\mathbf{I}_m$\\
+    使用RANSAC法得到最佳匹配曲线$y=kx+b$ on $\mathbf{I}_m$ \\
+    在视觉地图中当前图像的最佳匹配特征是$\mathbf{f}_{km+b}$\\
+    所以当前位置是$\hat{l}_t = l_{km+b} $
+ }
+ return $\hat{l}_t$
+  \label{alg:Algorithm}
+\end{algorithm}
+
+本文算法框架如算法\label{fig:Framework}所示。关于地图框架，我们采用的是纯图像检索，但数据集是按照图像传入时间的先后顺序存储的。
+不仅可以保证精度，同时保证了计算效率。我们选择AlexNet的Conv3中的特征作为我们的整体图像描述符。Conv3的维度是64896，也就是说，一张图像显示为64896维的向量$\mathbf{f}$。
+我们用每张图像的位置建立可视化地图$\{[\mathbf{f},\mathbf{l}]\}_{i=1}^{n}$。所以当前的图像序列表示为$\{\mathbf{I}\}_{j=t-m+1}^{t}$。
+为了减少高维度向量运算耗时，我们通过PCA（主成分分析）来减少深度特征维度。虽然图像特征描述在一定程度上丢失了信息，但同时减少了因天空、地面和树木等数据集中因背景信息而导致的模糊匹配。
+在线图像的向量将通过余弦距离与数据集向量进行逐一比较，然后然后得到匹配矩阵$\mathbf{S}$，其组成元素是位于(0,1)之间的浮点数。通过核化方法对匹配矩阵进行归一化处理，以减少因与大多数在线图像匹配的数据集混淆而造成的歧义。
+将匹配矩阵保存为灰色图像，然后通过合适的阈值将其转换为二进制图像。此外，我们对匹配的灰度图像进行了核化与侵蚀，以消除接近最佳匹配的相似匹配的影响。我们尝试调整参数，然后通过RANSAC在线寻找最佳匹配序列。
+匹配矩阵中当前图像的最佳匹配特征为$\mathbf{f}_{km+b}$。那么当前图像在视觉图中的最佳匹配图像为$\mathbf{l}_{km+b}$。
+
+%我们的实验电脑配置是英特尔Core i7，CPU处理器。
+我们采用Tensorflow深度学习框架，从AlexNet的Conv3中提取特征，作为每张图像的全局特征描述符。Conv3层的向量维度为64896，也就是说每一张图像的深度特征由64896维的向量来表示。AlexNet的不同层特征适用于不同的机器视觉任务。AlexNet ConvNets中不同层的向量尺寸见表\ref{tab:layer}。\cite{krizhevsky2012imagenet}。层次较高的层在语义上更有意义\cite{sunderhauf2015performance}，但同时失去了过多的语义信息，而对同类型场景无法区分。所以使用网络的哪一层作为图像特征表示具有重要意义。来自Conv3层的特征在剧烈的外观变化条件下仍表现较好。此外，fc6和fc7在视角变化方面优于其余层。然而，当外观变化时，fc6和fc7完全失败。基于以上研究，我们用AlexNet的Conv3的特征来表达图像。
+
+\begin{table}[!htbp] 
+    \caption{AlexNet不同层特征维度} 
+    \label{tab:layer}
+    \begin{center} 
+        \begin{tabular}{c c c c} 
+              \toprule
+             Layer & dimensions & Layer & dimensions\\
+              \midrule 
+             Conv1 & 96$\times$55$\times$55 & Conv4 & 384$\times$13$\times$13\\
+             pool1 & 96$\times$27$\times$27 & Conv5 & 256$\times$13$\times$13\\
+             Conv2 & 256$\times$27$\times$27 & fc6 & 4096$\times$1$\times$1\\
+             pool2 & 256$\times$13$\times$13 & fc7 & 4096$\times$1$\times$1\\
+             Conv3 & 384$\times$13$\times$13 & fc8 & 1000$\times$1$\times$1\\
+             \bottomrule 
+         \end{tabular} 
+     \end{center} 
+ \end{table}
+\subsection{基于AlexNet网络的单目视觉绝对定位深度特征降维}
+\begin{table}[!htbp] 
+    \caption{信息保有率与参数n\_components的关系。} 
+    \label{tab:component}
+    \begin{center} 
+        \begin{tabular}{cccc} 
+              \toprule
+             n\_components&Ratio& n\_components&Ratio\\
+              \midrule 
+              316 & 99\%  & 51  & 93\%\\
+              187 & 98\%  & 44  & 92\%\\
+              136 & 97\%  & 38  & 91\%\\ 
+              99  & 96\%\ & 33  & 90\%\\ 
+              76  & 95\%\ & 29  & 89\%\\          
+              62  & 94\%\ & 25  & 88\%\\ 
+                         \bottomrule 
+         \end{tabular} 
+     \end{center} 
+ \end{table}{}
+
+
+\begin{figure}[h]
+  \centering
+  \begin{subfigure}[h]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{ICVS/5.png}
+    \caption{图像特征保留5维时的匹配矩阵}
+  \end{subfigure}
+  \begin{subfigure}[h]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{ICVS/10.png}
+    \caption{图像特征保留5维时的匹配矩阵}
+  \end{subfigure}
+  \begin{subfigure}[h]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{ICVS/20.png}
+    \caption{图像特征保留5维时的匹配矩阵}
+  \end{subfigure}
+  \begin{subfigure}[h]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{ICVS/33.png}
+    \caption{图像特征保留5维时的匹配矩阵}
+  \end{subfigure}
+  \begin{subfigure}[h]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{ICVS/51.png}
+    \caption{图像特征保留5维时的匹配矩阵}
+  \end{subfigure}
+  \begin{subfigure}[h]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{ICVS/99.png}
+    \caption{图像特征保留5维时的匹配矩阵}
+  \end{subfigure}
+ \caption{深度特征分别保留5，10，20，33，51，99维时的匹配矩阵}
+ \label{fig:MatchingComparision}
+\end{figure}
+
+我们在Norland数据集上进行测试，以选择平衡计算消耗和准确性的图像特征维度。
+Norland数据集是：*******
+我们选择300张春季的图像序列进行深度特征训练，500张秋季的图像序列作为测试。我们在scikit-learn中使用IPCA进行大量的图像匹配。PCA是高维数据分析的重要手段之一。PCA通过线性变换将高维数据转化为低维数据。AlexNet各层的维度如表1********所示。从表中可以看出，我们保留的维度越多，获得的信息就越多，但也很耗时，所以首要任务是由参数n\_components为参照以确定每个向量保留多少维度，该参数与主信息Ratio之间的关系列在表\ref{tab:component}中。一般来说，在保持一定精度的情况下，我们最好保持至少90％的主信息比。我们还对不同维度的匹配结果进行了比较，比较结果如图 \ref{fig:MatchingComporision}所示。随着特征维度的降低，匹配曲线变得模糊，当图像特征维度降低至20以下时无法检测出最佳匹配线。而保留33个维度时匹配矩阵足够清晰，同时也节省了计算量。综上所述，我们选择33个维度的向量作为图像描述符。
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.6\textwidth]{ICVS/cos-crop.pdf}
+  \caption{图片特征描述子降维匹配矩阵示意图}
+  \label{fig:cos}
+\end{figure}
+
+\subsection{单目视觉绝对定位匹配矩阵核化处理与归一化}
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.85\textwidth]{ICVS/1.pdf}
+  \caption{矩阵核化运算前后函数曲线对比。}
+  \label{fig:Kernel}
+\end{figure*}
+
+我们的任务是准确地找到匹配矩阵中的最佳匹配线。我们利用数学变换使这条线更加清晰比如核化方法，包括对匹配矩阵的元素进行反演和指数化。选择这种方法的原因如下。
+1）2幅图像之间的余弦距离，即匹配矩阵元素与图像相似度不是完全正相关关系。
+2)核化方法会扩大假阴性与真阳性之间的距离。
+图\ref{fig:Kernel}是由余弦距离计算出的函数曲线比较，如公式(\ref{tab:cosine})所示，核化距离如公式(\ref{tab:normalization})所示。红色圈线代表两个图像向量的余弦距离。绿色星线代表的是核法距离 右图是两个图像向量的核法距离。我们可以看到，核化法可以增强两个不同地点之间的差异。最佳匹配图像的颜色会显示为黑色，不同的地方会显示为白色，如图\ref{fig:KernelMatrix}所示。更重要的是，通过内核法对匹配矩阵进行归一化处理，可以减少大部分在线图片匹配数据集混乱造成的歧义。将匹配矩阵保存为灰度图像，以便进行后续的处理，包括形态变换和二值化。我们对匹配矩阵进行了归一化处理，范围为0～255，公式为(\ref{tab:normalization})，经过核方法后，匹配矩阵就变得更加明显了。
+
+
+我们在Norland数据集中选取了3000张在同一个地方拍摄的春季和冬季图像，测试了核化方法。由于两个图像序列起点是同一地点，因此，在对角线上出现的匹配线即最佳匹配序列。匹配结果如图\ref{fig:KernelMatrix}所示，我们通过余弦距离$cos <\mathbf f_i,\mathbf f_j>$将在线图像与记录的数据集图像逐一进行匹配。因此，一条线出现在对角线上，为最佳匹配序列。匹配结果如图\ref{fig:KernelAfter}所示。
+我们通过余弦距离$cos <\mathbf f_i,\mathbf f_j>$将在线图像与地图数据集图像逐一匹配。然而，匹配的图像显示为图\ref{fig: KernelBefore}，这意味着错误匹配和最佳匹配之间产生了混淆。然而，通过核方法和归一化，对角线变得很明显，如图\ref{fig:KernelAfter}所示。最后，将匹配矩阵保存为灰度图像，通过适当的阈值将其转换为二进制图像。
+
+\begin{equation}
+\label{tab:cosine} 
+\cos <\mathbf f_i,\mathbf f_j> = \frac{\displaystyle\sum_{i=1}^{33} a_i b_i}{\displaystyle\sum_{j=1}^{33} a_j^2 \displaystyle\sum_{k=1}^{33}b_k^2}
+\end{equation}
+$\mathbf f_i=\{\mathbf{{a}_1\ {a}_2\ ... \ {a}_{33}}\}$,  $i\in D$, D is set of datasets images
+$\mathbf f_j=\{\mathbf{{b}_1\ {b}_2\ ... \ {b}_{33}}\}$,  $j\in O$, O is set of online images
+\begin{equation}
+\label{tab:normalization}
+\mathbf{M}_{ij}=\frac{255\left(\mathbf{M}_{ij}-\mathbf{M}_{min}\right)}{\mathbf{M}_{max}-\mathbf{M}_{min}}
+\end{equation}
+\begin{figure}[h]
+\centering
+\begin{subfigure}[t]{0.23\textwidth} 
+  \includegraphics[width=\textwidth]{ICVS/MatchMatr_spring_winter_3000_3300_KITTI.png}
+  \caption{欧式距离匹配矩阵}
+  \label{fig:KernelBefore}
+\end{subfigure}
+\begin{subfigure}[t]{0.23\textwidth} 
+  \includegraphics[width=\textwidth]{ICVS/KernelMethodMatchMatr_spring_winter_3000_3300_e_255.png}
+  \caption{核化处理后的匹配矩阵}
+  \label{fig:KernelAfter}
+\end{subfigure}
+\caption{Norland数据集春-冬跨季节匹配矩阵}
+\label{fig:KernelMatrix}
+\end{figure}
+
+
+\section{基于AlexNet的单目视觉绝对定位实验}
+我们的实验旨在展示我们的方法对图像进行深度特征降维以及匹配矩阵核化处理后对定位效果的影响。我们的方法能够(i)在跨季节的场景中进行定位，忽略动态物体、不同天气和季节变化。(ii)节省时间和计算成本。我们在SeqSLAM中使用的公开数据集Norland上进行了评估\cite{milford2012seqslam}。采用该数据集中64x32的灰色图像图像频率为1帧/秒，如果我们的方法在这种不清晰和微小的低信息含量图像中仍然有效，那么它可以节省大量的时间和计算消耗。我们可以看到在图\ref{fig:KernelAfter}中，最佳匹配线已经很明显了。我们通过经典的RANSAC算法找到它的数学模型，在数据集中找到相应的索引。
+\begin{figure}[h]
+\centering
+\begin{subfigure}[h]{0.23\textwidth} 
+  \includegraphics[width=\textwidth]{ICVS/33.png}
+  \label{fig:MatchingMatrix}
+    \caption{核化及标准化后的匹配矩阵}
+\end{subfigure}
+\begin{subfigure}[h]{0.23\textwidth} 
+  \includegraphics[width=0.4\textwidth]{ICVS/Binary_im2bw_301p_600p_201p_700p-crop.pdf}
+  \label{fig:Binary}
+  \caption{二值化匹配矩阵}
+\end{subfigure}
+\begin{subfigure}[h]{0.23\textwidth} 
+  \includegraphics[width=\textwidth]{ICVS/RANSAC_Binary_im2bw_2-crop.pdf}
+  \label{fig:RANSAC}
+    \caption{匹配矩阵中的最佳匹配查找}
+\end{subfigure}
+\label{fig:ImageProcessing}
+\caption{Norland数据集秋-春跨季节匹配矩阵}
+\end{figure}
+我们选择了300张秋季图片作为训练地图，对春季进行视觉定位，如图\ref{fig:ImageProcessing}所示，
+我们选择了一个300张秋季图片序列作为地图，由春季图像进行在线定位。我们可以看到，从AlexNet的Conv3中提取的特征并没有影响匹配结果。相反，如图\ref{fig:MatchingMatrix}所示，减少了背景信息的影响。图\ref{fig:Binary}是匹配图像的二值化结果。你可以看到，大部分干扰信息已经被擦掉了。%The capacity of restraining distractor has more important effect during robots localization. 
+我们可以看到，在图\ref{fig:ransac}中，绿色的线只是这段时间的最佳匹配。当前图像在匹配矩阵中的最佳匹配特征为$\mathbf{f}_{km+b}$。那么当前图像在视觉图中的最佳匹配图像是$\mathbf{l}_{km+b}$。
+在图中\ref{fig:ExperimentResult}，我们绘制了3条线来评估我们方法的在3000张匹配图像上的实验结果。其中蓝线是图像索引Ground Truth，红线是匹配图像索引，黄线是匹配索引误差。
+
+
+\begin{figure}[htbp]
+ \centering
+ \begin{subfigure}[h]{0.23\textwidth} 
+  \includegraphics[width=\textwidth]{ICVS/spr_images-00285.png}
+  \caption{场景1春天图像}
+  \label{fig:RainNight}
+ \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth} 
+  \includegraphics[width=\textwidth]{ICVS/spr_images-00234.png}
+  \caption{场景2春天图像}
+ \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth} 
+  \caption{场景3春天图像}
+  \includegraphics[width=\textwidth]{ICVS/spr_images-00226.png}
+ \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth} 
+  \includegraphics[width=\textwidth]{ICVS/spr_images-00005.png}
+  \caption{场景4春天图像}
+\end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth} 
+  \includegraphics[width=\textwidth]{ICVS/images-00285.png}
+  \caption{场景1秋天图像}
+ \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth} 
+  \caption{场景2秋天图像}
+  \includegraphics[width=\textwidth]{ICVS/images-00234.png}
+\end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth} 
+    \includegraphics[width=\textwidth]{ICVS/images-00226.png}
+    \caption{场景3秋天图像}
+  \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth} 
+ \includegraphics[width=\textwidth]{ICVS/images-00005.png}
+ \caption{场景4秋天图像}
+ \end{subfigure}
+ \caption{匹配易失败场景春秋对比图}
+\end{figure}
+
+\begin{figure*}[h]
+ \centering
+ \begin{subfigure}[h]{0.23\textwidth}
+ \includegraphics[width=\textwidth]{ICVS/spring_8101_8400_fall_8001_8500_transform_33d_0_255.png}
+ \caption{Spring images 8101-8400 with fall 8001-8500}
+ \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth}
+ \includegraphics[width=\textwidth]{ICVS/spring_6601_6900_fall_6501_7000_transform_33d_0_255.png}
+ \caption{春季6601-6900序列-秋季6501-7000序列匹配矩阵}
+ \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth}
+ \includegraphics[width=\textwidth]{ICVS/spring_9301_9600_fall_9201_9700_transform_33d_0_255.png}
+ \caption{春季9301-9600序列-秋季9201-9700序列匹配矩阵}
+ \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth}
+ \includegraphics[width=\textwidth]{ICVS/spring_9601_9900_fall_9501_10000_transform_33d_0_255.png}
+ \caption{春季9601-9900序列-秋季9501-10000序列匹配矩阵}
+ \end{subfigure}
+ \caption{部分序列匹配矩阵}
+\end{figure*}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=2.0\columnwidth]{ICVS/resultlines-crop.pdf}
+  \caption{3000张图片匹配结果}  
+  \label{fig:ExperimentResult}
+\end{figure*}
+
+\begin{figure}[htbp]
+ \centering
+ \begin{subfigure}[h]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{ICVS/images-02024.png}
+ \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{ICVS/images-02025.png}
+ \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{ICVS/images-02026.png}
+ \end{subfigure}
+ \begin{subfigure}[h]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{ICVS/images-02027.png}
+ \end{subfigure}
+ \caption{Norland数据集中隧道图像采集样例}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.3\textwidth]{ICVS/spring_1801_2100_fall_1701_2200_transform_33d_0_255.png} 
+  \label{fig:Dark}
+  \caption{春季数据集中包含隧道片段的匹配矩阵}
+\end{figure}
+
+
+\section{本章小结}
+
+我们的论文提出了一种在动态环境中对机器人进行跨季节定位的新型算法。我们从AlexNet的Conv3中提取特征，该深度特征的匹配精度优于传统手工提取特征，通过PCA减少维度是一个新的尝试。
+
+事实证明，Conv3是机器人本地化的最佳选择。相对于更底层的深度特征它具有更快的计算速度，并保留了一定语义信息，减少了图像混乱匹配。我们通过核化法将在线图像向量与地图向量逐一进行比较。我们从AlexNet的Conv3中提取特征，通过PCA减少维度特征的匹配精度仍优于传统手工提取特征。
+
+这个过程扩大了正确匹配和错误匹配之间的差异。此外，通过适当阈值核化处理、图像放大和侵蚀，将复杂的数据关联图转化为简单的图像处理。在序列匹配方面，我们采用经典的RANSAC算法，在短时间内找到最佳匹配线。我们的实验结果表明，深度特征降维是加快计算速度和减少混乱匹配的好主意，且该算法对季节变换、动态环境、天气变化等都有很强的适应性。
+本章算法的局限性主要受限制于图像采集设备。在完全黑暗的环境下，由于没有主动光源，图像信息很难表现出来，如图\ref{fig:Dark}所示。实际上在第1872至2016张图像中没有对应的匹配线。在AlexNet的Conv3中，对于难以表达深度特征的图像，匹配图像显示为黑色区域，我们将考虑加入激光的辅助。此外，我们还将研究特征维度与定位精度之间的更具体的影响关系。我们希望通过训练一个针对性的网络结构，得到不受季节变化、天气变化、动态环境等因素的影响的全局图像特征。
+
+
+

@@ -1,0 +1,446 @@
+\begin{figure}[h]
+    \includegraphics[width=\textwidth]{figures/mvosr/method/00-765-model1-ps131.pdf}
+    \caption{正偏态分布}
+    \label{fig:mvosr_wrong_skewness}
+\end{figure}
+\begin{figure}[h]
+    \includegraphics[width=\textwidth]{figures/mvosr/method/00-50-model2-ns119.pdf}
+
+    \caption{负偏态分布}
+    \label{fig:negative_skewness}
+\end{figure}
+\begin{figure}[h]
+    \includegraphics[width=\textwidth]{figures/mvosr/method/00-72-model2-ns003.pdf}
+
+    \caption{近似非偏态分布}
+    \label{fig:no_skewness}
+\end{figure}
+对于多模态数据，根据路面特征点高度应该大于其他位置的特征点，我们使用最最右侧一个模态上的数据，计算路面高度。我们
+选择皮尔森第一偏度因子近似估计偏度
+\begin{equation}
+    \rho_1 = \frac{(\text{mean}-\text{mode})}{\text{standard deviation}}
+\end{equation}
+此处的$\text{mode}$并非全局众数，而是最右侧模态的众数。同单模态一样，对于负偏态分布我们选择分布的众数作为相机相对高度，否则使用分布右侧第一个出现局部最小值
+的位置作为相机相对高度。
+相机相对高度$\bar{h}$获取之后，考虑已知的相机绝对高度$h$，获取尺度系数$s=\frac{h}{\bar{h}}$
+
+\begin{algorithm}
+    \caption{路面高度计算方法（统计分析法）}
+    \KwIn{特征点集合 $\Gamma  =\{ f_0,f_1,....,f_n\} $已知每在相机坐标系下的坐标 $(\bar{x}_i,\bar{y}_i,\bar{z}_i$);路面俯仰角$\theta$}
+    \KwOut{路面相对高度 $\bar{h}$}
+    根据公式\ref{eq:feture_remap}特征点坐标变换得到 $(\bar{x'}_i,\bar{y'}_i,\bar{z'}_i$)\\
+    计算$\bar{y'}$的概率分布直方图$hist_{y'}$\\
+    根据$hist_{y'}$计算该分布的模态 $N_m$，已经模值集合$M={m_0,m_1,...,m_{N_{m-1}}}$\\
+    计算每一个模态的右边界点$B={b_0,b_1,...,n}$\\
+    \eIf{$N_m=1$}
+    {
+        根据皮尔森第二偏度系数计算偏度$\rho$
+    }
+    {
+        根据皮尔森第一偏度系数计算最后一个模值偏度$\rho$
+    }
+    
+    \eIf{$\rho>0.5$}
+    {
+        $\bar{h} = B[N_{m-1}]$
+
+    }
+    {
+        $\bar{h} = M[N_{m-1}]$
+    }
+  \label{alg:road_height_calculation}
+\end{algorithm}
+
+\subsection{尺度系数滤波}
+尺度系数$s$衡量着车辆的运动速度，为减弱噪声的影响，依据车辆速度不会发生剧烈变化的假设，我们对尺度系数进行时间维度上的融合滤波，以获取更稳定的
+效果。本文直接使用不依赖于噪声和模型的中值滤波进行噪声消除，即使用此前$n_f$帧估计出的尺度系数的中值作为当前时刻的尺度系数。试验中会具体分析不同
+滤波窗口大小$n_f$对滤波效果的影响。
+
+\section{实验}
+\label{sec:experiments}
+本文使用KITTI数据集\cite{geiger2012kitti}来所提出的算法，评价标准是用
+PRE \cite{geiger2012kitti} 和 ATE \cite{sturm2012benchmark}，已经本文所提出的尺度评价指标。
+KITTI数据集由22段序列组成，涵盖了城市，乡村，高速公路等环境，运行长度从几百米到数公里不等。
+
+算法使用PYTHON实现，目前已经开源\url{https://github.com/TimingSpace/MVOScaleRecovery}。
+所有测试均在配备酷睿i5, 2.7GHz的笔记本上完成。本章所开源的代码包含了两个
+版本，分别为离线版和在线版，离线版需要将初始运动和特征点保存，然后运行尺度恢复代码；在线版代码为与初始VO代码融合到一起，
+同时进行初始运动估计和尺度系数计算。
+在下文实验中，对于ORB-SLAM2单目版本的尺度恢复，我们使用的是离线版本的代码，其他实验均为在线版。
+
+在本实验章节，我们将依次评测：不同参数对尺度恢复精度的影响；尺度恢复的效果；尺度漂移抑制的效果；已经视觉里程计的最终精度。
+
+\subsection{尺度恢复效果实验}
+本小结分别将本算法与ORB-SLAM2的单目版本（不带闭环）比较RPE证明尺度恢复对原始轨迹的提升；
+与ORB-SLAM2的单目版本（带闭环）比较ATE证明尺度恢复对偏移抑制的效果优于闭环检测；
+与其他尺度恢复算法比较证明该算法的优越性。
+\subsubsection{尺度恢复效果}
+\label{sec:eva_scale_recovery}
+我们使用ORB-SLAM2计算相机的初始运动，在计算之前我们首先关掉了ORB-SLAM2基于闭环检测的全局优化，因为
+全局优化同样可以抑制尺度漂移。如图\ref{fig:scale_recovery}所示，图中第一列为ORB-SLAM2的原始轨迹，第二列为
+我们将轨迹的初始部分（前100帧）轨迹真值进行尺度对齐的结果，可以看出轨迹在后期与真实轨迹存在严重的漂移。在图的第三列为我们计算出的
+尺度系数与真实尺度系数的对比图，第四列为进行尺度恢复之后的轨迹，可以看出尺度恢复的轨迹已经很接近真实值了。我们对尺度恢复前后的轨迹使用
+RPE误差进行了定量评价，如表 \ref{tab:orb_comp}所示，可知我们的尺度恢复算法可以大幅度提升轨迹精度。
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_00_crop.pdf}
+
+    \caption{00原始轨迹}
+    \vspace*{2mm}
+
+    \label{fig:orb_path_00}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.23\textwidth}
+        \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_00_17_crop.pdf}
+
+        \caption{00原始轨迹x17}
+        \label{fig:orb_path_00_17}
+        \vspace*{2mm}
+        \end{subfigure}
+        \begin{subfigure}[b]{0.23\textwidth}
+            \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/scale_00_crop.pdf}
+
+            \caption{00 尺度参数}
+            \label{fig:scale_00}
+            \vspace*{2mm}
+            \end{subfigure}
+            \begin{subfigure}[b]{0.23\textwidth}
+                \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/path_00_crop.pdf}
+
+                \caption{00 尺度恢复}
+                \label{fig:scale_00}
+                \vspace*{2mm}
+                \end{subfigure}
+    \begin{subfigure}[b]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_05_crop.pdf}
+    \label{fig:orb_path_05}
+    \caption{05原始轨迹}
+    \vspace*{2mm}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.23\textwidth}
+        \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_05_17_5_crop.pdf}
+        \label{fig:orb_path_05_17}
+        \caption{05原始轨迹x17.5}
+        \vspace*{2mm}
+        \end{subfigure}
+        \begin{subfigure}[b]{0.23\textwidth}
+            \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/scale_05_crop.pdf}
+            \label{fig:scale_05}
+            \caption{05 尺度参数}
+            \vspace*{2mm}
+            \end{subfigure}
+            \begin{subfigure}[b]{0.23\textwidth}
+                \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/path_05_crop.pdf}
+                \label{fig:path_05}
+                \caption{05 尺度恢复}
+                \vspace*{2mm}
+                \end{subfigure}
+    \begin{subfigure}[b]{0.23\textwidth}
+        \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_08_crop.pdf}
+        \label{fig:orb_path_08}
+        \caption{08原始轨迹}
+        \end{subfigure}
+        \begin{subfigure}[b]{0.23\textwidth}
+            \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_08_25_crop.pdf}
+            \label{fig:orb_path_08_25}
+            \caption{08原始轨迹x25}
+            \end{subfigure}
+            \begin{subfigure}[b]{0.23\textwidth}
+                \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/scale_08_crop.pdf}
+                \label{fig:scale_08}
+                \caption{08 尺度参数}
+                \end{subfigure}
+                \begin{subfigure}[b]{0.23\textwidth}
+                    \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/path_08_crop.pdf}
+                    \label{fig:path_08}
+                    \caption{08 尺度恢复}
+                    \end{subfigure}
+    \caption{尺度恢复效果图}
+    {\label{fig:scale_recovery}}
+    
+    \end{figure}
+
+\begin{table}[t]
+    \caption{Scale Recovery Evaluation}
+    \label{tab:orb_comp}
+\begin{center}
+\begin{tabular}{c c c c c }
+\toprule
+methods & 00 & 05 & 08\\
+\midrule
+ORB NO LC&41.7\%&41.0\%&58.5\%\\
+ORB with Our Scale Recovery &\textbf{1.01}\%&\textbf{1.18}\%&\textbf{1.45}\%\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsubsection{尺度恢复与闭环检测效果比较}
+\label{sec:eva_scale_drift}
+我们与带闭环优化的ORB-SLAM进行对比来评测尺度漂移抑制的效果，使用ATE误差cite{sturm2012benchmark}。
+结果如表\ref{tab:orb_scale_drift}所示。可见本文所提出算法效果很好。，闭环检测是一种全局的优化方法，可以
+减少平移，旋转和尺度漂移，我们比较使用闭环检测的ORB-SLAM的效果与我们算法的效果。从表\ref{tab:orb_scale_drift}
+中可以看出，在大部分测试轨迹，我们的效果要比带闭环检测的ORB-SLAM要好，只有测试轨迹03, 06, 07,我们的算法稍有逊色。
+对于小尺度轨迹，如03，04，09和10，由于运行轨迹较短，我们的算法和闭环检测的误差都很小。对于其他长轨迹，由于我们的算法
+不依赖于闭环检测，所以我们都可以取得很小的误差，但ORB-SLAM只能在有闭环的00和05表现较好，但在没有闭环的02和08表现不好。
+\begin{table}[h]
+    \caption{与闭环检测比较尺度漂移抑制效果}
+    \label{tab:orb_scale_drift}
+\begin{center}
+\begin{tabular}{c c c c c c}
+\toprule
+\multirow{3}*{序列}&维度&长度& ORBwithLC  & ORBnoLC+Ours  \\
+                       &\cite{raul2015orb}&&\cite{raul2015orb}&\\
+                       &(mxm)&(m)&RMSE(m)&RMSE(m)\\
+\midrule
+00&564x496&3724&6.68 &\textbf{5.56}\\
+02&596x946&2085&21.75&\textbf{4.36}\\
+03&471x199&561&1.59&\textbf{1.36}\\
+04&0.5x294&393&1.79&\textbf{2.36}\\
+05&479x426&2206&8.23&\textbf{8.03}\\
+06&23x457&1233&14.68&\textbf{18.36}\\
+07&191x209&694&3.36&\textbf{5.16}\\
+08&808x391&2797&46.58&\textbf{5.64}\\
+09&465x568&778&7.62&\textbf{2.53}\\
+10&671x177&908&8.68&\textbf{2.33}\\
+\midrule
+average&&&12.10&\textbf{5.56}\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsubsection{与其他尺度恢复算法比较}
+\label{sec:overall_evaluation}
+我们将我们尺度恢复算法在KITTI视觉里程计数据集00h和02-10序列进行测试，并与其他方法进行比较。我们没有测试01序列，
+因为大部分单目视觉里程计算法无法在这个高速场景下区域较好的初始结果。从表\ref{tab:kitti_compare} 中可以看出，
+我们的算法的精度高于其他尺度恢复算法
+
+宋等人\cite{Song2015MoncularScale}的方法是之前已经发表的最好尺度恢复算法，与其比较可以发现，我们的算法精度更高。宋的算法无法在序列07中运行，因为序列07中
+车的正前方恰好被其他车辆遮挡，而宋的算法假定了被遮挡区域为路面，所以无法计算出准确的路面几何模型，进尺度恢复。而我们在线识别路面区域
+所以依然可以再序列07中取得相对稳定的结果（1.73\%）。在其他9个序列中，我们的评价误差为 1.25\% ，宋的平均误差为 2.03\%，同时我们有八条轨迹精度
+更好，只有轨迹06稍有逊色。
+
+Lee 等人\cite{Lee2015MoncularScale} 训练分类器在线识别路面区域，是一个非常创新的方法，其与本文的方法最大的区别是其基于颜色信息进行路面识别。
+比较精度后可以得知，我们的算法优于Lee的算法。但Lee的算法可以再序列01上运行，因为其考虑了路面特征，对高速场景更加鲁棒。
+
+Zhou 等人的方法\cite{zhou2016reliable} 是最近提出的尺度恢复算法，表中可以看出，我们的方法优于Zhou等人的方法。
+
+此外，可以看出我们的方法明已与VISO双目算法不相上下（我们有八条轨迹优于VISO双目）。
+
+
+
+\begin{table}[h]
+    \caption{与其他算法的精度比较}
+    \begin{center}
+    \begin{tabular}{c c c c c c c c c c c c c c c c c c}
+    \toprule
+    % \hline
+    \multirow{4}*{Seq}  & \multicolumn{2}{c}{Zhou et al.}& \multicolumn{2}{c}{VISO2-Stereo} &  \multicolumn{2}{c}{Lee et al.}& \multicolumn{2}{c}{Song et al.}  &\multicolumn{2}{c}{\multirow{2}*{Ours Method }}\\
+    & \multicolumn{2}{c}{(from \cite{zhou2016reliable})} &\multicolumn{2}{c}{(from \cite{Song2015MoncularScale})}&   \multicolumn{2}{c}{(from \cite{Lee2015MoncularScale})}&\multicolumn{2}{c}{(from \cite{Song2015MoncularScale})}  &\\
+    %  % \hline%\hline
+    \cline{2-3}  \cline{4-5}  \cline{6-7} \cline{8-9} \cline{10-11} \cline{12-13}
+      & Trans & Rot  & Trans & Rot &Trans & Rot& Trans & Rot& Trans & Rot\\
+      & (\%) & (deg/m)  & (\%) & (deg/m)& (\%) & (deg/m) & (\%) & (deg/m) &(\%) & (deg/m)\\
+    \midrule
+    00&2.17&0.0039&2.32&0.0109&4.42&0.0150&2.04 &0.0048&\textbf{1.01}&0.0014  \\
+    01&-&-&-&-&6.91&0.0140&- &-&-&-  \\
+    02&-&-&2.01&0.0074&4.77&0.0168&1.50 &0.0035&\textbf{0.93}&0.0018 \\
+    03&2.70&0.0044&2.32&0.0107&8.49&0.0192&3.37 &0.0021&\textbf{0.52}&0.001 \\
+    04&-&-&0.99&0.0081&6.21&0.0069&1.43 &0.0023&\textbf{1.16}&0.0023 \\
+    05&-&-&1.78&0.0098&5.44&0.0248&2.19 &0.0038&\textbf{1.45}&0.0014 \\
+    06&-&-&1.17&0.0072&6.51&0.0222&2.09 &0.0081&\textbf{2.92}&0.0027 \\
+    07&-&-&-&-&6.23&0.0292&- &-&\textbf{1.73}&0.0023 \\
+    08 & - & - & 2.35 & 0.0104 & 8.23& 0.0243&2.37 & 0.0044&\textbf{1.18} &0.0017 \\
+    09  & -& - & 2.36 & 0.0094 & 9.08& 0.0286&1.76 & 0.0047&\textbf{1.17}&0.0020\\
+    10 & 2.09 & 0.0054 & 1.37 & 0.0086 & 9.11& 0.0322&2.12 & 0.0085& \textbf{0.93}&0.0029\\
+    \midrule
+    % \textbf{Avg.} & \textbf{84.0}\\
+    Avg & 2.32 & 0.045 & 2.02 & 0.0095& 6.86 &0.02119&2.03&0.0045 &\textbf{1.25} &0.0020\\
+    % \hline
+    \bottomrule
+    \end{tabular}
+    \end{center}
+    \label{tab:kitti_compare}
+    \end{table}
+
+
+
+
+\subsection{消融研究}
+\subsubsection{特征点剔除分析}
+\begin{table}[h]
+    \caption{特征点剔除效果}
+\label{tab:depth_removal}
+\begin{center}
+ \STautoround*{2}
+\begin{spreadtab}{{tabular}{ccccccc}}
+    \hline
+    @\multirow{2}{*}{数据} & @运行距离 &@角度误差 &@不剔除 & @仅深度剔除 & @仅模型剔除 &@ 深度剔除+模型剔除 \\
+              &@ (m)   & @ (deg/m) &@ (\%)   & @ (\%)     &@ (\%)   & @ (\%)    \\ \hline
+    \hline
+    @\text{00}            &  3724    & 0.0053   &  13.28  &4.09      &  2.87     &  2.46       \\
+    @\text{02}            &  5067    & 0.0041   &  11.27  &2.75      &  2.03     &  1.76       \\
+    @\text{03}            &  561     & 0.0035   &  7.07   &2.73      &  1.20     &  1.14       \\
+    @\text{04}            &  394     & 0.0049   &  9.20   &1.93      &  2.08     &  1.81       \\
+    @\text{05}            &  2206    & 0.0041   &  9.86   &3.73      &  2.97     &  1.74       \\
+    @\text{06}            &  1233    & 0.0060   &  3.00   &3.71      &  4.51     &  3.1        \\
+    @\text{07}            &  695     & 0.0092   &  12.30  &5.61      &  4.07     &  3.44       \\
+    @\text{08}            &  3223    & 0.0035   &  10.82  &3.55      &  3.28     &  2.65       \\
+    @\text{09}            &  1705    & 0.0032   &  16.77  &4.54      &  1.86     &  1.68       \\
+    @\text{10}            &  920     & 0.0048   &  10.50  &5.02      &  3.04     &  2.12       \\
+    \hline
+    @\text{AVG}           &  sum(b3:b12)/10   & (c3+c4+c5+c6)/4   & (d3+d4+d5+d6)/4        &  (e3+e4+e5+e6)/4  & (f3+f4+f5+f6)/4      &  (g3+g4+g5+g6)/4    & (h3+h4+h5+h6)/4 & (i3+i4+i5+i6)/4   \\ \hline
+    \hline
+\end{spreadtab}
+\end{center}
+\end{table}
+
+\subsubsection{深度一致性特征点剔除}
+我们依据特征点深度$d$和像素位置$(u,v)$的关系进行了特征点剔除，在具体实现上，我们使用了三种方法，本小节将设计实验对比各种实现方式的准确性，
+选取KITTI视觉里程计数据集中的序列00，02-10作为作为测试集，控制算法中其他模块一致:分别使用
+简易的单目视觉里程计\footnote{https://github.com/uoip/monoVO-python}
+和特征均匀化的单目视觉里程计\footnote{https://github.com/TimingSpace/MVOScaleRecovery}做初始运动估计，；
+使用ransac计算路面模型；使用中值滤波对尺度系数进行滤波；深度
+使用RPE\cite{geiger2012kitti}评价指标,对于每种算法每组数据我们运行了十次取平均值,试验结果记录于表。
+
+\begin{table}[h]
+    \caption{基于深度一致的特征点剔除对比}
+\label{tab:depth_removal}
+\begin{center}
+ \STautoround*{2}
+\begin{spreadtab}{{tabular}{ccccccccc}}
+    \hline
+    @\multirow{2}{*}{数据} & @\multicolumn{2}{c}{不剔除} & @\multicolumn{2}{c}{朴素剔除} & @\multicolumn{2}{c}{概率剔除} &@ \multicolumn{2}{c}{最大团剔除} \\
+    \cline{2-3} \cline{4-5}  \cline{6-7}    \cline{8-9} 
+              &@ RPE   & @ Scale RPE   &@ RPE   & @Scale RPE     &@ RPE   & @Scale RPE   &@ RPE   & @Scale RPE           \\ \hline
+    \hline
+    @\text{00}                  &  2.17       & 1.66   &  1.89        &  1.42    &  2.13       &  1.62    & 2.00     &  1.49              \\
+    @\text{02}                  &  1.85       & 1.17   &  1.67        &  0.93    &  1.79       &  1.12    & 1.72     &  1.06              \\
+    @\text{03}                  &  2.15       & 2.05   &  2.19        &  2.08    &  2.15       &  2.01    & 1.92     &  1.81              \\
+    @\text{04}                  &  2.44       & 1.74   &  2.50        &  1.67    &  2.24       &  1.41    & 2.09     &  1.22              \\
+    @\text{05}                  &  2.44       & 1.74   &  2.50        &  1.67    &  2.24       &  1.41    & 2.09     &  1.22              \\
+    @\text{06}                  &  2.44       & 1.74   &  2.50        &  1.67    &  2.24       &  1.41    & 2.09     &  1.22              \\
+    @\text{07}                  &  2.44       & 1.74   &  2.50        &  1.67    &  2.24       &  1.41    & 2.09     &  1.22              \\
+    @\text{08}                  &  2.44       & 1.74   &  2.50        &  1.67    &  2.24       &  1.41    & 2.09     &  1.22              \\
+    @\text{09}                  &  2.44       & 1.74   &  2.50        &  1.67    &  2.24       &  1.41    & 2.09     &  1.22              \\
+    @\text{10}                  &  2.44       & 1.74   &  2.50        &  1.67    &  2.24       &  1.41    & 2.09     &  1.22              \\
+    \hline
+    @\text{AVG}             &  (b3+b4+b5+b6)/4       & (c3+c4+c5+c6)/4   & (d3+d4+d5+d6)/4        &  (e3+e4+e5+e6)/4  & (f3+f4+f5+f6)/4      &  (g3+g4+g5+g6)/4    & (h3+h4+h5+h6)/4 & (i3+i4+i5+i6)/4   \\ \hline
+    \hline
+\end{spreadtab}
+\end{center}
+\end{table}
+从表中可以看出，本文提出的基于深度一致思想的特征点剔除方法的三种实现方式均可以在一定程度长提高轨迹估计的精度，其中基于最大团的方法精度最高。值得注意的是，最朴素的直接剔除法
+在00和02取得了较好的效果，但在04和06却稍有逊色，（需要进一步分析）。
+\subsubsection{路面模型特征点剔除}
+控制基于深度的剔除方式一致（概率剔除），路面模型计算方式一致（RANSAC），滤波方式一致（中值滤波），
+\begin{table}[h]
+    \caption{基于路面模型的特征点剔除对比}
+    \label{tab:flat_removal}
+    \begin{center}
+    %\begin{tabular}{ccccccccc}
+    \STautoround*{2}
+    \begin{spreadtab}{{tabular}{ccccccccc}}
+    \hline
+    @\multirow{2}{*}{数据} & @\multicolumn{2}{c}{不剔除} & @\multicolumn{2}{c}{固定区域} &@ \multicolumn{2}{c}{仅角度剔除} & @\multicolumn{2}{c}{角度+高度} \\
+     \cline{2-3} \cline{4-5}  \cline{6-7}    \cline{8-9} 
+                        &@ RPE   & @Scale RPE    & @RPE     & @Scale RPE     &@ RPE      & @Scale RPE   & @RPE      & @Scale RPE     \\ \hline
+    @00                  &  11.41       & 11.58            &  7.44        &   7.33              &  4.51        &  4.13            &  2.13       &  1.62             \\ 
+    @02                  &  13.53       & 13.73            &  3.59        &   3.09              &  1.94        &  1.33            &  1.79       &  1.12              \\ 
+    @04                  &  17.94       & 17.91            &  7.83        &   7.80              &  2.47        &  2.36            & 1.92        &  1.81              \\ 
+    @06                  &  12.26       & 12.23            &  17.4        &   16.9              &  4.18        &  3.80            &  2.24       &  1.41               \\  \hline
+    @\text{AVG}             &  (b3+b4+b5+b6)/4       & (c3+c4+c5+c6)/4   & (d3+d4+d5+d6)/4        &  (e3+e4+e5+e6)/4  & (f3+f4+f5+f6)/4      &  (g3+g4+g5+g6)/4    & (h3+h4+h5+h6)/4 & (i3+i4+i5+i6)/4   \\ \hline
+    %\end{tabular}
+\end{spreadtab}
+\end{center}
+\end{table}
+
+控制基于深度的剔除方式一致（最大图剔除），路面模型计算方式一致（RANSAC），滤波方式一致（中值滤波），
+\begin{table}[h]
+    \caption{基于路面模型的特征点剔除对比2}
+    \label{tab:flat_removal}
+    \begin{center}
+    %\begin{tabular}{ccccccccc}
+    \STautoround*{2}
+    \begin{spreadtab}{{tabular}{ccccccccc}}
+    \hline
+    @\multirow{2}{*}{数据} & @\multicolumn{2}{c}{不剔除} & @\multicolumn{2}{c}{固定区域} & @\multicolumn{2}{c}{仅角度剔除} & @\multicolumn{2}{c}{角度+高度} \\
+     \cline{2-3} \cline{4-5}  \cline{6-7}    \cline{8-9} 
+                        & @RPE   & @Scale RPE    &@ RPE     &@ Scale RPE     & @RPE      & @Scale RPE   & @RPE      & @Scale RPE     \\ \hline
+    @00                  & 10.40  & 10.57             &  9.46        &   9.39             &  3.37        &  3.01             & 2.00     &  1.49              \\ 
+    @02                  & 11.18   &11.39              &  4.28        &   3.78             &  2.16        &  1.53          & 1.72     &  1.06              \\ 
+    @04                  &  14.08  & 14.4              &  8.00        &   7.97            &  3.68        &  3.64            &  2.15    &  2.01              \\ 
+    @06                  & 10.65    &10.67              &  17.5        &   17.0             &  4.70        &  4.36            & 2.09    &  1.22               \\  \hline
+    @\text{AVG}          &  (b3+b4+b5+b6)/4       & (c3+c4+c5+c6)/4   & (d3+d4+d5+d6)/4        &  (e3+e4+e5+e6)/4  & (f3+f4+f5+f6)/4      &  (g3+g4+g5+g6)/4    & (h3+h4+h5+h6)/4 & (i3+i4+i5+i6)/4   \\ \hline
+  %  \end{tabular}
+\end{spreadtab}
+\end{center}
+\end{table}
+
+\subsubsection{路面模型计算对比}
+
+\subsubsection{初始运动估计效果对比}
+\begin{table}[h]
+    \caption{基于路面模型的特征点剔除对比}
+    \label{tab:flat_removal}
+    \begin{center}
+    \begin{tabular}{ccccccccc}
+    \hline
+    \multirow{2}{*}{数据} & \multicolumn{2}{c}{Fast-VO} & \multicolumn{2}{c}{VISO-M} & \multicolumn{2}{c}{SuperVO} & \multicolumn{2}{c}{DeepVO} \\
+     \cline{2-3} \cline{4-5}  \cline{6-7}    \cline{8-9} 
+    & 原始轨迹   & 尺度恢复  & 原始轨迹   & 尺度恢复 & 原始轨迹   & 尺度恢复 & 原始轨迹   & 尺度恢复   \\ \hline
+  00&\\
+  02&\\
+  04&\\
+  06&\\  
+    \end{tabular}
+\end{center}
+\end{table}
+
+\section{本章小结}
+本章提出了一种创新的单目视觉里程计尺度绝对尺度恢复方法。基于路面几何结构相比于路面颜色信息更加的稳定，本文
+创新的提出了使用路面几何结构来识别路面区域特征点，同时在线更新道路几何结构。
+我们将尺度恢复中涉及的两个重要问题：道路区域检测和道路几何结构计算，有机的耦合为一个问题，使二者可以相互促进。
+使用中值滤波使尺度系数更加鲁棒。所提出的算法实现简单，但精度高，在KITTI评价体系下优于现有算法。
+
+\begin{subfigure}[b]{0.18\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/path_fig/00.pdf}
+\end{subfigure}
+    \begin{subfigure}[b]{0.18\textwidth}
+\includegraphics[width=\textwidth]{figures/mvosr/path_fig/02.pdf}
+\end{subfigure}
+
+\begin{subfigure}[b]{0.18\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/path_fig/03.pdf}
+\end{subfigure}
+
+\begin{subfigure}[b]{0.18\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/path_fig/04.pdf}
+\end{subfigure}
+
+\begin{subfigure}[b]{0.18\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/path_fig/05.pdf}
+\end{subfigure}
+
+\begin{subfigure}[b]{0.18\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/path_fig/06.pdf}
+\end{subfigure}
+
+\begin{subfigure}[b]{0.18\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/path_fig/07.pdf}
+\end{subfigure}}
+
+\begin{subfigure}[b]{0.18\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/path_fig/08.pdf}
+\end{subfigure}
+
+\begin{subfigure}[b]{0.18\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/path_fig/09.pdf}
+\end{subfigure}
+
+\begin{subfigure}[b]{0.18\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/path_fig/10.pdf}
+\end{subfigure}

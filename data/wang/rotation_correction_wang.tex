@@ -1,0 +1,266 @@
+\chapter{基于可行驶区域的漂移抑制}
+由于单目视觉状态估计是首先估计机器人运动，然后通过增量式方法估计机器人当前姿态，其中误差会不断累积
+造成旋转和平移的偏差不断增大。尺度恢复仅能抑制尺度漂移，对平移运动的方向以及全部的旋转运动没有直接促进作用。
+本文提出基于可行驶区域进行相机运动的漂移抑制。可行驶区域影响着了机器人未来一段时间的轨迹，而状态估计是对过去
+一段时间的状态估计，但二者描述的是同一段轨迹。我们研究使用可行驶区域对所估计的状态进行修正，提高状态估计的
+准确性。
+
+\section{方法}
+\subsection{漂移矫正方法}
+\label{sec:ego-correction}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.9\columnwidth,height=0.72\columnwidth]{figures/drift_correction/system_2_crop_small.pdf}
+    \caption{系统}
+    \label{fig:system}
+  \end{figure}
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.9\columnwidth,height=0.35\columnwidth]{figures/drift_correction/correct_crop.pdf}
+  \caption{漂移}
+  \label{fig:correction}
+\end{figure}
+
+
+假设我们初始估计出了机器人过去一段时间的运动，每两次采样的之间的运动$ \{\mathbf{T}_{t}^{t+1} \in SE(3)\}\; t =
+t_n, t_{n+1}, ...,t_m$, 并根据运动计算出了每次采样时机器人的姿态
+$\mathbf{P}_{t+1} =\mathbf{P}_{t}*\mathbf{T}_{t}^{t+1}$。
+
+本算法主要针对自动驾驶系统设计，并作出如下假设：1. 摄像头安装在机器人前侧上方，且距离地面距离$h_c$基本不变； 2. 已知车辆宽度$w_c$；
+3. 车辆行驶在可行驶区域上，且相邻数次采样距离可行驶区域边缘距离接近。
+如图 \ref{fig:road_correct_seg}所示, 我们将一段运动轨迹
+$ \{\mathbf{P}_{t} \in SE(3)\} \;t = t_n, t_{n}+1, ...,t_m$ 投影回机器人初始时刻所采集的图片 $\mathbf{I}_{t=n}$ 上，
+车辆在不同时刻在 $\mathbf{I}_{t=n}$（记为参考帧）上的投影中心可按如下过程计算。首先计算每一帧相对初始帧的姿态（也就是初始帧到此真的运动）
+\begin{equation}
+    \mathbf{T}_n^{t} = \mathbf{P}_{n}^{-1}\mathbf{P}_{t}
+\end{equation}
+从中分解得到平移运动$\mathbf{t}_n^t$，并考虑相机到地面的距离$h_c$，得到车辆底部中心相对参考帧坐标系的位置，将其投影至参考帧图像
+\begin{equation}
+    \mathbf{u}_{t} = \frac{\mathbf{K}\left(\mathbf{t}_n^t + [0,h,0]^{T}\right)}{z}
+    \label{eq:projection}
+\end{equation}
+其中$z=\mathbf{t}_n^t$为$z$方向的相对距离，$\mathbf{u}_t$ 为我们计算得到的车辆底部在参考帧图像的投影。车辆宽度参考帧中的长度为
+\begin{equation}
+    \delta u =\frac{f_x w_c\left(v-c_y\right)}{f_y h_c}
+\end{equation}
+
+与此同时，我们检测参考帧中可行驶路面区域，路面区域检测工作不是本章研究问题，本章将路面区域作为已知条件。
+我们根据路面区域，对其边缘进行曲线拟合，得到路面左右边缘方程$\mathbf{f}_{l}(u,v)=0$和$\mathbf{f}_r(u,v)=0$。
+左右侧方程均为$\mathbf{f} = av^2+bv+c-u$。其中当点$(u,v)$在曲线右侧，$\mathbf{f}(u,v)<0$，$(u,v)$在曲线左侧，
+$\mathbf{f}(u,v)>0$。
+%At the same time, we detect the drivable road region on the pixel level by semantic
+%segmentation with the pre-trained MultiNet architecture \cite{teichmann2016multinet}.
+
+
+%The road edge function is defined as
+%$\mathbf{f}(\mathbf{u}) = 0$, where $\mathbf{f}(\mathbf{u}) <0$ means that the point is on the
+%left side of this line and $\mathbf{f}(\mathbf{u}) > 0$ denotes the point is on the right side of
+%this line. We denote $\mathbf{f}_l$ and $\mathbf{f}_r$ are the curve functions of the road left edge and the right edge respectively. 
+%What's more, we use quadratic equations to fit the road curve.
+
+我们将结合可行驶区域和初始的运动估计，优化后得到新的运动。我们将问题描述为图优化问题，如图\ref{fig:correction}。
+图中每个结点为机器人姿态$\{\mathbf{P_{t}}\} \; t=t_n,...,t_m$，
+根据假设3定义了两种类型的边，分别约束机器人在可行驶区域内以及机器人与可行驶区域边缘距离相近。
+第三条件为之前运动估计的约束。
+根据车辆底部应位于路面上的假设，我们定义一个单节点边
+\begin{equation}
+    \label{eq:vo_correct_dr_unary_edge}
+    \mathbf{e}_{t} = \mathcal{L}_{relu}(\mathbf{f}_l(u_t,v_t)+\delta u
+    ) + \mathcal{L}_{relu}(-\mathbf{f}_r(u_t,v_t)+\delta u)
+\end{equation}
+其中$\delta u$ 为投影到参考帧之后的车辆宽度，我们使用$ReLU$非线性函数因为当车在路面上时，能量函数应该为0。
+
+其相对机器人位姿的梯度可计算为
+
+\begin{equation}
+    \mathbf{e_t}^{\prime} = \frac{\partial \mathbf{e_t}}{\partial \mathbf{f}_l}
+    \frac{\partial \mathbf{f}_l}{\partial \mathbf{u_t}}
+    \frac{\partial \mathbf{u_t}}{\partial \mathbf{P_t}}+
+    \frac{\partial \mathbf{e_t}}{\partial \mathbf{f}_r}
+    \frac{\partial \mathbf{f}_r}{\partial \mathbf{u_t}}
+    \frac{\partial \mathbf{u_t}}{\partial \mathbf{P_t}}
+\end{equation}
+
+我们根据车辆距离路边沿的距离会相对一致，定义
+\begin{equation}
+    \label{eq:vo_correct_dr_binary_edge_1}
+\mathbf{e}_{t,t+1}= \|\mathbf{f}_l(\mathbf{u}_t)-\mathbf{f}_l(\mathbf{u}_{t+1})\|_2 + \|\mathbf{f}_r(\mathbf{u}_t)-\mathbf{f}_r(\mathbf{u}_{t+1})\|_2
+\end{equation}
+其相对位姿的梯度为
+\begin{equation}
+    \frac{\partial\mathbf{e_{t,t+1}}}{\mathbf{P_{t}}} = \frac{\partial\mathbf{e_{t,t+1}}}{\partial \mathbf{f}_l}
+    \frac{\partial \mathbf{f}_l}{\partial \mathbf{u_t}}
+    \frac{\partial \mathbf{u_t}}{\partial \mathbf{P_t}}+
+    \frac{\partial\mathbf{e_{t,t+1}}}{\partial \mathbf{f}_r} 
+    \frac{\partial \mathbf{f}_r}{\partial \mathbf{u_t}}
+    \frac{\partial \mathbf{u_t}}{\partial \mathbf{P_t}}
+\end{equation}
+
+
+根据初始运动估计的约束得到
+\begin{equation}
+    \label{eq:vo_correct_dr_binary_edge_2} 
+    \mathbf{e}_{t,t+1}^{\prime} = \|log(\mathbf{P}_{t+1}^{-1}\mathbf{P}_{t}\mathbf{T}_{t}^{t+1})\|_2
+\end{equation}
+%This kind of edge is well defined in g2o \cite{kummerle2011g}.
+
+公式\ref{eq:vo_correct_dr_unary_edge}和\ref{eq:vo_correct_dr_binary_edge_1}仅能约束机器人位姿投影到
+参考帧图像上的位置，在整个投影过程有两个歧义性：1. 深度的歧义性，理解为2D投影点在3D
+世界中对应着无穷深度不同的位置；2. 运动的歧义性，理解为不同的旋转和平移运动的组合都可以从初始
+位置到达目标位置。我们根据无人车运行的实际情况，附加两个约束，消除歧义性。1.优化过程，不改变估计位姿数值方向的值，
+2. 我们先假设机器人不做旋转运动，在公式 \ref{eq:vo_correct_dr_binary_edge_2}中，仅约束机器人的平移运动。
+然后我们使用g2o \cite{}优化
+\begin{equation}
+    \{\mathbf{P}_t\}\; _{t=t_n,...,t_m} = \argmin_{{\mathbf{P}}_t} \sum_{t=t_n}^{t_m} \mathbf{e}_t+\mathbf{e}_{t,t+1}+\mathbf{e}_{t,t+1}^{\prime}
+    \label{eq:corr_loss}
+\end{equation}
+得到新的机器人位置。然后根据车辆一般受到自身动力学约束，一般都是先旋转运动，再向前平移运动\cite{}，计算得到新的机器人
+位姿。
+
+\section{基于车辆运行轨迹的路面区域分割}
+路面区域分割即将图像中所有像素点分成路面像素点和非路面像素点两个类别，
+可数学描述为求解
+\begin{equation}
+    \argmax_{\{\Re_r\}} \prod_{u\in \{\Re_r\}} P(y_u|x_u)\prod_{u\in \{\Re_{\bar{r}}\}}( 1-P(y_u|x_u))
+\end{equation}
+$P(y_u|x_u)$，其中$u$为像素点，$p(y_u)=p(u\in \{\Re_r\})$为像素点$u$输入路面区域的$\{\Re_r\}$的概率，$x_u$
+为像素点可以观测的到的特征，主要包括像素点的颜色$x_u^c$以及像素点的坐标$x_u^u$。假设在给定路面区域的条件下，像素点颜色与像素点坐标相互独立。
+我们首先分别建模路面颜色模型$(y_u|x_u^c)$和路面区域模型$(y_u|x_u^u)$，之后再联合求解。
+\subsection{路面颜色模型}
+我们首先选择初始化的路面区域以及非路面区域：根据车辆在路面上行驶所得到的轨迹可以初始化路面区域；
+同时根据路面区域一定存在于图像灭点之下可得到非路面区域，如图\ref{fig:road_prob}所示。
+我们分别对初始路面和初始非路面进行建模，得到其色彩概率分布模型$p(x_u^c|y_u)$和$p(x_c|\bar {y_u})$。根据贝叶斯逆概定量
+进而可以求出给定颜色情况下，该像素点属于路面的概率。
+$p(y_u|x_u^c) = \frac{p(y_u) p(x_u^c|y_u)}{p(x_u^c)}$，其中$p(y_u)$为像素点属于路面区域的先验概率。
+如果输入图像为RGB图像
+\begin{equation}
+    p(y|x_{c_r},x_{c_g},x_{c_b}) = \frac{p(y) p(x_{c_r}|y) p(x_{c_g}|y) p(x_{c_b}|y)}{p(y) p(x_{c_r}|y) p(x_{c_g}|y) p(x_{c_b}|y)+p(\bar y) p(x_{c_r}|\bar y) p(x_{c_g}|\bar y) p(x_{c_b}|\bar y)}
+\end{equation}
+根据路面与非路面区域的色彩分布模型，可计算二者皮尔森（或交叉熵）的相关性指数
+\begin{equation}
+    s = cor(p(x_c|y),p(x_c|\bar y))
+\end{equation}
+当路面区域与非路面区域的色彩模型比较相似，该相关性指数会比较高，此时路面分割结果更不可靠，反之亦然。此参数可以用来评价基于路面识别的可靠性。
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/drift_correction/road_probability.pdf}
+    \caption{路面概率计算}
+    \label{fig:road_prob}
+\end{figure}
+
+\subsection{路面位置模型}
+
+假设汽车宽度为$w^c$，某时刻$t$路面宽度为$w^r_t$，假设$w^r_t\in (w_c,\acute{w}_r)$， 且先验概率分布为均匀分布，
+汽车中心在路面上位置相对于路面左侧起点为$x^c_t$，可知$x^c_t \in \left(\frac{w_c}{2},w^r_t-\frac{w_c}{2}\right)$
+,假设汽车在路面上的位置$p(x^c_t)$服从均匀分布。可求路面宽度和车辆在路面上的位置的联合概率分布为二维面上的均匀分布，如图所示。
+我们拟求距离车辆中心距离的$x$的点在路面区间上的概率，即$p(x\in (r_t^l,r_t^r))$。如图所示，可求
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/drift_correction/road_probability_pri_1.pdf}
+    \caption{路面宽度与车辆位置的联合概率分布}
+    \label{fig:road_prob}
+\end{figure}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/drift_correction/road_probability_pri_x.pdf}
+    \caption{不同位置属于路面区域的概率}
+    \label{fig:road_prob}
+\end{figure}
+\begin{equation}
+p(x\in (r_t^l,r_t^r))=
+  \begin{cases}
+    0      & \quad \text{if } x\leq-(w_t^r-\frac{w_c}{2})\\
+    \left(1-\frac{-x-\frac{w_c}{2}}{w_r-w_c}\right)^2       & \quad \text{if } -(w_t^r-\frac{w_c}{2})x\leq-\frac{w_c}{2}\\
+    1  & \quad \text{if } -\frac{w_c}{2}<x\leq\frac{w_c}{2}\\
+    \left(1-\frac{x-\frac{w_c}{2}}{w_r-w_c}\right)^2 & \quad \text{if } \frac{w_c}{2}<x\leq w_t^r-\frac{w_c}{2}\\
+    0 &\quad \text{if }  x>w_t^r-\frac{w_c}{2}
+  \end{cases}
+\end{equation}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/drift_correction/road_error_math.pdf}
+    \caption{不同位置属于路面区域的概率}
+    \label{fig:dc_road_error_math}
+\end{figure}
+
+如图\ref{fig:dc_road_error_math}所示，上述计算假设汽车朝向角度，与参考帧相同，由此计算的路面宽度会与真实情况不一致，我们定量分析其
+误差，并根据误差情况选择轨迹长度。已知路面宽度为$w^r$，汽车距离路面左侧距离为$x^c$，汽车当前绕y轴旋转角度为$\theta$
+假设路面外沿曲率半径为$r^{r_o}$，则内沿曲率半径为
+$r^{r_i}$。可知$y^{A^\prime}=y^{B^\prime}=(r^{r_o}-x^c)\sin(\theta)$。
+可求其与道路左右边沿的交点
+\begin{equation}
+    x^{A^\prime}=\sqrt {r^2-(y^{A^\prime})^2} \quad x^{B^\prime}=\sqrt {(r-w^r)^2-(y^{A^\prime})^2}
+\end{equation}
+进而可计算其所引入的相对误差为
+\begin{equation}
+    w^{r^\prime} = \frac{|x^{A^\prime} -x^{B^\prime}|-w^r}{w^r}
+\end{equation}
+其曲线如图所示。 我们保证 5\%的误差，可知车辆旋转角需要小于0.2弧度。
+
+$(t_x,t_y+h^c,t_z)$为车辆中心在参考帧坐标系下的坐标。根据投影关系$z(u,v,1)^T=K(t_x+x,t_y+h^c,t_z)^T$关系可求点$(t_x+x,t_y+h^c,t_z)$
+在参考帧图像中的像素位置$(u,v)$，进而可知此像素点属于路面的概率$p((u,v)\in \{\Re_r\})$，如图所示。
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/drift_correction/road_prior_compare.pdf}
+    \caption{车辆轨迹和路面先验概率}
+    \label{fig:road_prob}
+\end{figure}
+
+\subsection{联合求解}
+我们将$p((u,v)\in \{\Re_r\})$作为每个像素点属于路面区域的先验概率，然后使用路面颜色模型更新其概率。
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/drift_correction/road_prob_compare.pdf}
+    \caption{路面区域比较}
+    \label{fig:road_prob}
+\end{figure}
+
+\subsection{路面区间求解}
+根据所求取的路面后验概率，可根据最大似然性求取路面区间，问题描述为，已知$p(u_i) \quad for\  u_i \ \in [0,w^I]$
+求取路面左右边界$r^{l_u}$和$r^{r_u}$使似然性最大
+\begin{equation}
+    \argmax_{r^{l_u},r^{r_u}} \quad p(r^{l_u},r^{r_u})=\prod_{u_i=0}^{r^{l_u}-1}(1-p(u_i))\prod_{u_i=r^{l_u}}^{r^{r_u}-1}p(u_i)\prod_{u_i=r^{r_u}}^{w^I-1}(1-p(u_i))
+\end{equation}
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/drift_correction/road_parameter_estimation.pdf}
+    \caption{路面参数估计}
+    \label{fig:road_para}
+\end{figure}
+计算出图像每一行中路面区域的左右边界$r^{l_u},r^{r_u}$后，利用已知的路面高度$h$，根据如下公式所表示的投影关系
+将左右边界反投影回3D空间
+\begin{equation}
+    Z = \frac{h^cf_y}{v-c_y} \\
+    X = \frac{Z(u-c_x)}{f_x}= \frac{h^cf_y(u-c_x)}{f_x(v-c_y)}
+\end{equation}
+计算出$r^{l_X}_i$和$r^{r_X}-i$，同时计算出路面宽度$w^r_i$和车辆到路面左侧的距离$x^c_i$。根据路面宽度的连续性，进行滤波。
+\subsection{多帧帧路面区间联合优化}
+\section{实验}
+\subsection{仿真实验}
+\subsection{使用其他方法获取的路面区域进行漂移矫正}
+
+\iffalse
+\begin{figure}[h]
+\centering
+\subfigure[]{\label{fig:cor_res_0}
+\includegraphics[width=0.225\textwidth,height=0.12\textwidth]{images/correct_result/correct_1.png}
+}
+\subfigure[]{\label{fig:cor_res_1}
+\includegraphics[width=0.225\textwidth,height=0.12\textwidth]{images/correct_result/correct_4.png}
+}
+\subfigure[]{\label{fig:cor_res_2}
+\includegraphics[width=0.225\textwidth,height=0.12\textwidth]{images/correct_result/no_correct_1.png}
+}
+\subfigure[]{\label{fig:corrected_09}
+\includegraphics[width=0.225\textwidth,height=0.12\textwidth]{images/corrected_09.pdf}
+}
+\caption{矫正可视化}
+{\label{fig:path_cor_res}}
+\end{figure}
+\fi
+\subsection{使用我们提出的方法进行漂移矫正}
+
+\subsection{道路地图}
+\section{结论}

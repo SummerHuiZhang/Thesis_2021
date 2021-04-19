@@ -1,0 +1,19 @@
+\begin{table}[h]
+    \caption{深度估计对比}
+    \label{tab:dmvosr_depth}
+    \begin{center}
+    \begin{tabular}{l c c c }
+    \toprule
+    % \hline
+    算法 & rel & $log_{10}$ & rms \\
+    %  % \hline%\hline
+    \midrule
+    Karsch等人\cite{karsch2014depth}（摘自\cite{ranftl2016dense})& 0.171&0.076&2.830\\
+    Ranftl等人（摘自\cite{ranftl2016dense}）         & 0.148&0.065&2.408\\
+    本算法回归后深度                    & 0.162&0.062&2.571\\
+    本算法优化后深度                    & 0.112&0.046&2.047\\
+    % \hline
+    \bottomrule
+    \end{tabular}
+    \end{center}
+ \end{table}

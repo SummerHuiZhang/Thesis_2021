@@ -1,0 +1,409 @@
+\chapter{基于单目深度估计的单目视觉里程计尺度计算}
+\label{ch:deepsr}
+
+第\ref{ch:mvosr}章中所介绍的基于道路几何模型的单目视觉里程计尺度计算方法虽然取得了较高的精度（相对位置误差约为2\%），但该算法依赖于两个假设：1）相机高度在车辆运行中已知且相对稳定；2）车辆前方行驶路面在大部分时刻可近似为平面。
+该假设使基于路面几何模型的尺度恢复方法在应用场景上受到限制。路面几何模型之所以可以被用来计算视觉里程计
+的绝对尺度，主要原因是相机到路面的高度在初始阶段容易标定测量且在运行阶段相对稳定，进而保证路面上所有特征点的绝对深度可以间接计算并作为尺度计算的绝对参考。如果可以在运行过程中，实时地通过单目相机获取场景中全部特征点
+的绝对深度，那么尺度计算的绝对参考则不再局限于路面几何模型和路面特征点。为实现这一目的，本章提出了一种融合单目深度估计的单目视觉里程计尺度计算方法。在具体实现上，首先通过训练深度神经网络模型来学习单目彩色图像到场景深度图像之间的映射关系，用于获取图像中每一个像素点的绝对深度估计值，然后将这些绝对深度值作为绝对参考进行尺度计算。此外，本章通过视觉运动估计和运动视差（Motion Parallax）的三角测量所获取的相对深度值对深度神经网络所估计的深度值进行优化，尺度计算和深度值优化过程可以通过迭代进行来得到更高的精度。
+
+融合单目深度估计之后的单目视觉里程计问题可以被近似转换为RGBD视觉里程计问题，所以在开始研究之前需要回答两个问题：1）单目视觉里程计与RGBD视觉里程计相比具有哪些优势，为什么不直接使用RGBD或双目相机？2）为什么不直接使用RGBD视觉里程计的方法来解决融合单目深度估计的视觉里程计问题？这两个问题的答案决定着本文研究的必要性。
+首先，融合单目深度估计的单目视觉里程计方法设备简单、标定方便、同时因不受固定的基线长度的限制而可以适用于更多的场景，这些优势是单目视觉里程计在里程计家族中存在的意义；然而因为无法直接通过固定的基线长度的视差测量或其它物理方式获取像素点深度，直接从图像颜色信息去估计深度是存在歧义的不确定性问题，虽然神经网络深度估计模型可基于日常所生活世界的相似性，通过场景中的结构信息估计物体的相对远近，通过物体的先验大小信息分析物体的绝对远近，并将场景结构分析和物体大小分析封装为
+一个黑盒模型，通过监督学习训练神经网络模型，让神经网络学习预测场景中每一个像素点的深度，但这种深度估计方法在精度上不高且无法确定像素点深度估计值的可靠性，以至于无法直接使用RGBD视觉里程计方法解决尺度问题，所以本文仍将问题描述为单目视觉里程计的尺度计算问题。
+
+本文的研究工作主要分为两个方面：首先研究深度估计的精度提升和有效性判断，通过条件随机场对相邻帧之间的光度一致性和帧内的深度连续性进行建模，进而对单目直接估计出的深度进行优化，以提升深度估计效果；另外，研究使用单目深度估计得到的深度参考来鲁棒地进行尺度计算。在上述研究的基础之上，本文主要做出三个贡献：
+\begin{enumerate}
+    \item 本文提出了使用条件随机场将图像内的深度连续性约束和相邻图像之间的光度一致性约束融入于单目深度估计问题，并使用端到端的方法同时训练深度神经网络和条件随机场，实现了深度估计错误点的剔除和精度的提升。
+    \item 本文首次研究基于单目深度估计的单目视觉里程计的尺度计算，提出使用学生t分布描述深度估计残差，并通过极大似然估计计算单目视觉里程计的运动尺度系数。
+    \item 本文的方法将单目深度估计与单目运动估计两个问题有机的融合到了一起，在预测阶段，通过迭代优化可以同时提升单目深度估计和运动估计中尺度计算的精度。
+\end{enumerate}
+
+本章内容结构如下：首先在第\ref{sec:deepsr_method}节介绍深度估计和尺度恢复的结合方法；然后在第\ref{sec:deepsr_experiment}节通过实验验证算法性能；最后在第
+\ref{sec:deepsr_conclusion}节总结全文工作。
+
+\section{基于单目深度估计的尺度恢复方法}
+\label{sec:deepsr_method}
+本节将依次介绍：1）基于条件随机场的单目深度估计方法；2）基于所估计出深度的单目视觉里程计尺度计算方法。
+
+\subsection{基于条件随机场的单目深度估计}
+\subsubsection{条件随机场建模}
+本章使用深度卷积网络作为主体模型估计单目场景深度，并利用条件随机场建模前后帧之间光度一致性和帧内相邻像素之前的深度连续性并作为约束以增强深度估计的准确性和鲁棒性。
+深度估计整体架构模型如图\ref{fig:deepsr_network_structure}所示，网络依据输入的RGB图像计算初始深度估计图像，然后将初始深度估计图像与相邻帧RGB图像联合，经条件随机场模型优化后得到优化的深度图像。
+\begin{figure}
+    \centering
+    \includegraphics[width=0.96\textwidth]{dmvosr/network-crop.pdf}
+    \caption{融合条件随机场的深度估计网络架构}
+    \label{fig:deepsr_network_structure}
+\end{figure}
+
+在条件随机场建模中，定义了条件随机场的三个势函数，包括：单像素深度误差的一元势函数、约束帧内相邻像素关系的
+二元势函数和约束帧间像素关系的二元势函数。条件随机场的总能量定义为三个势函数的能量加权之和：
+\begin{equation}
+    E = \sum_{\mathbf{p}\in \{\Omega_{\mathbf{I}^1}\}} U(\underline{d_{p}}^{1},\mathbf{u}_p^{1})+\alpha_1\sum_{(p,q)\in \Omega_{\mathbf{I}^1}}V(\mathbf{u}_p^1,\mathbf{u}_q^1)
+    +\alpha_2\sum_{p\in\Omega_{\mathbf{I}^1}}W(\mathbf{u}_p^1,\mathbf{T})
+\end{equation}
+其中$\Omega_{\mathbf{I}^i}$为图像$\mathbf{I}^i$中的全部像素点集合，$\mathbf{u}_p^i$表示图像$\mathbf{I}^i$中像素点$p$的像素位置，$\underline{d_p}^{i}$为像素点$p$的深度真实值。
+$\mathbf{T}$为两幅图像所对应的相机位置之间的运动矩阵，$\alpha_i$为能量方程中的权重，
+其决定了帧内二元势函数$V$和帧间二元势函数$W$对深度估计结果的影响，这两个参数需要通过
+监督学习与神经网络中的其它参数共同训练得到，接下来将依次详细介绍三个势函数。
+
+\paragraph{绝对深度一元势函数}
+
+绝对深度一元势函数用来约束卷积神经网络所估计的每个像素点$p$的深度值$d_p$与深度真值$\underline{d_p}$之间的差异，
+可以使用最小二乘距离对深度误差进行建模：
+\begin{equation}
+    U(\mathbf{u}_{p}^1,\underline{d_p}) = \frac{1}{2}(\underline{d_p}-f(p;\mathbf{\omega}))^2 \quad  \forall p \in \Omega_{\mathbf{I}^1}
+\end{equation}
+其中$f(p;\mathbf{\omega})=d_p$为从RGB图像像素点到深度图像的映射函数，由卷积神经网络建模，$\mathbf{\omega}$为卷积神经网络中需要训练学习的参数。绝对深度一元势函数仅约束了每个像素点的估计深度
+与真实深度之间的误差，但并未考虑临近像素点之间的相互关系，为了提升深度估计的准确性和鲁棒性，增加了约束帧内相邻像素深度连续性的二元势函数。
+
+\paragraph{帧内相邻像素二元势函数}
+帧内相邻像素二元势函数基于这样一个假设：像素位置临近且像素颜色相近的两个像素点所对应的深度值也相对接近，即
+\begin{equation}
+    \|d_p - d_q\| \propto \|I_p-I_q\|\|\mathbf{u}_p-\mathbf{u}_q\|
+\end{equation}
+于是可以将此势函数定义为：
+\begin{equation}
+    V(\mathbf{u}_p^1,\mathbf{u}_q^1) = \frac{1}{2} \kappa_{p,q}(d_p^1-d_q^1)^2 \quad \forall p,q \in \Omega_{\mathbf{I}^1}
+\end{equation}
+其中$\kappa_{p,q}$为外观核，用来计算不同像素位置和像素颜色的两个像素点所对应深度约束的权重，定义为：
+\begin{equation}
+    \kappa_{p,q}= \exp(-\gamma_1\|I_p-I_q\|_2 - \gamma_2\|\mathbf{u}_p-\mathbf{u}_q\|_2)
+\end{equation}
+其中$\gamma_1$和$\gamma_2$为位置差异和颜色差异的权重系数。如当两个像素点位置临近且颜色相近时，$\kappa_{p,q}$
+接近于1，此时该二元函数的最小化则会使像素$p$和像素$q$深度更加接近，反之$\kappa_{p,q}$趋近于0，则对像素点深度值约束较小（如图\ref{fig:deepsr_apperance_kernal}）。在外观核函数的作用下，相邻像素点之间的深度关系受到约束，增加的场景的结构信息。此外需要指出，帧内相邻像素二元势函数属于非监督势函数，公式中$d_p$和$d_q$为网络估计的深度而并非深度真值。
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.96\textwidth]{dmvosr/apperance_kernal-crop.pdf}
+    \caption{外观核示意图}
+    \label{fig:deepsr_apperance_kernal}
+\end{figure}
+
+
+\paragraph{相邻图片帧间二元势函数}
+帧间二元势函数用来约束相邻帧对应像素的颜色差异，其在原理上基于光度不变假设，即三维空间中的同一个像素点在不同帧中投影得到的像素点的值基本一样。帧内二元势函数约束是同一帧内不同像素点之间的深度差异，而帧间二元势函数约束的是不同帧内同一像素点的色彩差异。然而同一像素点在不同帧内的像素位置是不一样的，即$u_p^1 \neq u_p^2$，于是为了建立约束方程，首先要建模$u_p^2$和$u_p^1$之间的关系。像素点$p$在相机坐标系的三维坐标$\mathbf{x}_p$，其可以通过反投影
+方程$\pi^{-1}(u_p,d_p)$计算得到：
+\begin{equation}
+    \mathbf{x} = \pi^{-1}(u_p,d_p) = d_p
+    \begin{pmatrix}
+        \frac{1}{f_x} & 0  &-\frac{c_x}{f_x}\\
+        0   &\frac{1}{f_y} &-\frac{c_y}{f_y}\\
+        0 & 0 & 1 
+    \end{pmatrix} \vec{\mathbf{u}}_p
+\end{equation}
+其中$f_x$，$f_y$，$c_x$和$c_y$分别为相机的焦距和光心，$\vec{\mathbf{u}}_p$为扩充之后的
+像素坐标$\vec{\mathbf{u}}_p=(u_x,u_y,1)$。
+在已知机器人的旋转运动矩阵$\mathbf{R}\in SO(3)$和平移向量$\mathbf{t} \in \mathbb{R}^3$的前提下，可以将像素点$p$重投影至
+相邻图像中
+\begin{equation}
+    \mathbf{u}^2_p = \pi(\mathbf{R}\mathbf{x}_p+\mathbf{t})
+\end{equation}
+综上，
+\begin{equation}
+    \mathbf{u}^2_p = g(\mathbf{u}_p^1) = \pi(\mathbf{R}\pi^{-1}(u_p,d_p)+\mathbf{t})
+\end{equation}
+其中$\pi(\mathbf{x})$为投影方程
+\begin{equation}
+    d_p(u_x,u_y,1)^T = \pi(\mathbf{x}) = 
+    \begin{pmatrix}
+       f_x & 0  &c_x\\
+        0  &f_y &c_y\\
+        0 & 0 & 1 
+    \end{pmatrix} \mathbf{x}
+\end{equation}
+基于光度一致假设，像素点在相邻帧内的像素值应该基本一致，所以可使用像素差作为约束项
+\begin{equation}
+    r = I^2_p - I^1_p
+\end{equation}
+其中$I^i_p$为像素$p$在$I^i$帧中的像素值。
+由于像素光度误差不服从高斯分布，为了抑制异常点的影响，本文使用Huber误差\cite{huber1992robust}代替像素的残差和，能量函数为
+\begin{equation}
+    W(\mathbf{u}_p^1,\mathbf{T}) = \|r \|_{Huber}
+\end{equation}
+此处Huber误差定义为
+\begin{equation}
+    H(x) = \|x\|_{Huber} =    
+    \begin{cases}
+        \frac{1}{2} x^2 & \text{if }\quad |x| < \sigma \\
+        \sigma(|x|-\frac{1}{2}\sigma)              & \text{if }\quad |x| \geq \sigma
+    \end{cases}
+\end{equation}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.96\textwidth]{dmvosr/huber_loss.pdf}
+    \caption{Huber误差示意图}
+    \label{fig:deepsr_huber}
+\end{figure}
+Huber误差如图\ref{fig:deepsr_huber}所示，在异常点处相比于L2范数值较小，所以此误差函数不易受异常点影响。
+
+
+
+\subsubsection{网络模型的训练}
+单目深度估计用数学建模表示为求条件概率：
+\begin{equation}
+    p(d|\mathbf{\omega}) = \frac{1}{Z}\exp(-E(d,\mathbf{\omega}))
+\end{equation}
+其中$Z=\int_d \exp(d,p)\text{d}d $是概率综合为1的配分函数。
+由于在目标能量函数中使用了Huber损失函数，其无法通过数值分析获取后验概率分布，所以使用得分匹配算法\cite{hyvarinen2005estimation}来优化
+神经网络的参数和条件随机场的参数。使用得分匹配方法时，目标方程可转化为
+\begin{equation}
+    \mathcal{J(\mathbf{\omega})} = \frac{1}{N}\sum_{t=1}^{N}\sum_{i=1}^{n}\left[\partial_i \Psi(d;\mathbf{\omega}) + \frac{1}{2} \Psi(d;\mathbf{\omega})^2\right] + \text{const}
+\end{equation}
+其中$\Psi(d;\mathbf{\omega})$为得分函数
+\begin{equation}
+    \Psi(d;\mathbf{\omega}) = \nabla_d \log(p(d|\mathbf{\omega}))
+\end{equation}
+得分函数为目标函数的对数梯度$\Psi(d;\mathbf{\omega}) \in \mathbb{R}^{w,h}$，其中$w$和$h$分别为图像的宽度和高度。
+深度神经网络和条件随机场中的参数可以通过梯度下降优化求解。
+
+\subsubsection{深度估计}
+在条件随机场和深度神经网络经过训练之后，能够获取了模型中的全部参数，包括$\mathbf{\omega}$，$\alpha_1$和$\alpha_2$，可以使用最大后验概率(MAP)计算图像深度，
+\begin{equation}
+    d = \argmax_d \log(p(d|I^1,I^2,T))
+\end{equation}
+但由于Huber损失函数的使用，神经网络对离群点无法做出深度估计，于是本文设定一个重投影误差的阈值，将超过此阈值的像素点的深度设为无效值。
+\begin{equation}
+    log(p(d|I^1,I^2,T)) = -\left(\|d - \underline{d}\|^2 + \alpha_1d^TMd+\alpha_2\|r+J(d-\underline{d})\| \right)
+\end{equation}
+优化之后的深度为
+\begin{equation}
+    d = \left(I+\alpha_1M+\alpha_2J^2\right)^{-1}\left(d+\alpha_2J^2d-\alpha_2Jr\right)
+    \label{eq:deepsr_depth_opti}
+\end{equation}
+\subsection{基于深度估计的绝对尺度计算}
+初始的单目视觉里程计可以获取相对尺度下的相机运动$(\mathbf{R},\mathbf{\bar{t}})$，
+匹配成功的特征点集合$\Omega_f=\{f_0,f_1,...,f_n\}$以及每个特征点
+相对尺度下的深度$\bar{d}_i$。根据深度神经网络计算得到的特征点的绝对深度$d_i$，可计算得到尺度因子
+\begin{equation}
+    s = \frac{d_i}{\bar{d}_i}
+\end{equation}
+每个特征点的深度误差可表示为
+\begin{equation}
+    r_i = d_i- s \bar{d}_i
+\end{equation}
+在理想情况下，特征点的误差应该为0
+\begin{equation}
+    r_i=0\quad \forall f_i \in \Omega_f
+\end{equation} 
+但由于深度估计的绝对深度和单目视觉里程计所计算的
+相对深度都存在误差，$r_i$存在一定偏差。首先假设每个像素点深度误差相互独立且服从同样的分布，$r_i$所服从
+的分布可以记为$p(r_i)$。由于视觉里程计匹配成功的特征点数量不多（ORB-SLAM最后每帧的特征点的数量为100左右），
+所以异常点对尺度系数的估计影响较大，为了降低异常点对尺度估计造成的影响，本文使用对异常点相对鲁棒的学生t分布（Student's t-distribution）
+对尺度系数建模，即$r_i$服从学生t分布：
+\begin{equation}
+    p(r_i) \propto \frac{1}{\sigma}\left(1+\frac{1}{\nu}\left(\frac{r_i}{\sigma}\right)^2\right)^{-\frac{v-1}{2}}
+\end{equation}
+尺度系数计算问题可以表示为极大似然估计：
+\begin{equation}
+    s = \argmax_s \prod_i^n p(r_i)
+    \label{eq:deepsr_scale}
+\end{equation}
+其中参数$\sigma$和$\nu$表示学生t分布的尺度变量和自由度；$s$为待估计的尺度系数。
+极大似然估计通过期望最大化迭代求解学生t分布的参数和尺度因子\cite{lange1989robust}。获取尺度因子后即可计算
+机器人绝对尺度下的运动矩阵
+\begin{equation}
+    \mathbf{T} = \begin{pmatrix}
+        \mathbf{R} & s \mathbf{t}\\
+        0&1
+    \end{pmatrix}
+\end{equation}
+
+场景的深度估计可以进一步基于公式\eqref{eq:deepsr_depth_opti}进行优化。在尺度系数计算过程中，由于所使用初始单目视觉
+里程计为特征点法，相邻特征点间距较远，条件随机场重点帧内二元势函数基本接近0，可直接忽略此项，
+以提高深度优化的速度。通过迭代尺度系数和场景深度可以使二者的精度同时提高。但为了保证视觉里程计
+的运算速度，在实现上仅迭代一次，具体实现如图\ref{fig:deepsr_system_structure}和算法\ref{alg:deep_mvosr}。
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.96\textwidth]{dmvosr/dvo_procedure-crop.pdf}
+    \caption{尺度恢复系统架构}
+    \label{fig:deepsr_system_structure}
+\end{figure}
+\begin{algorithm}[h]
+    \caption{基于深度估计的单目视觉里程计尺度恢复算法}
+    \KwIn{单目图像序列$\{\mathbf{I}^t\}_{t=1}^n$、深度神经网络估计的深度图像$\{\mathbf{D}^t\}_{t=1}^n$}
+    \KwOut{机器人运动轨迹$\{\mathbf{P}^t\}_{t=1}^n \quad \mathbf{P}^t \in SE(3)$和优化的深度图像$\{\hat{\mathbf{D}}^t\}_{t=1}^n$}
+    设定 $\mathbf{P}^0 = \begin{pmatrix}
+        \mathbf{E}& 0\\
+        0 &1
+    \end{pmatrix}$ 其中$\mathbf{E}$为$3\times3$单位帧\\
+    \For{$t=1$ to $n$}
+    {   
+        在图像$\mathbf{I}^t$中提取特征点$\{f\}^t$\\
+        \If{$t>1$}
+        {
+            匹配特征点$\{f\}^t$和$\{f\}^{t-1}$得到$f^m = \{f\}^{t\cap t-1}$\\
+            根据匹配成功的特征点计算相机运动得到
+            $\mathbf{\bar{T}} = \begin{pmatrix}
+                \mathbf{R}& \mathbf{\bar{t}}\\
+                0 &1
+            \end{pmatrix}$\\
+            通过三角测量获取匹配成功的特征点$f^m$的相对深度$\bar{d}$\\
+            \While{迭代次数 $i<$最大迭代次数}
+            {
+                计算$f^m$的绝对深度$d = D(f^m)$\\
+                根据公式\eqref{eq:deepsr_scale}计算尺度系数$s$\\
+                更新 $\mathbf{\bar{T}} = \begin{pmatrix}
+                    \mathbf{R}& s\mathbf{\bar{t}}\\
+                    0 &1
+                \end{pmatrix}$\\
+                根据公式\eqref{eq:deepsr_depth_opti}优化深度图$D$\\
+                i=i+1\\
+            }
+            $\mathbf{P}^t = \mathbf{P}^{t-1}\mathbf{T}$\\
+            $\hat{\mathbf{D}}^t = \mathbf{D}^t$
+        }
+    }
+    返回$\{\mathbf{P}^t\}_{t=1}^n$
+  \label{alg:deep_mvosr}
+\end{algorithm}
+
+
+\section{单目深度估计和尺度计算实验}
+\label{sec:deepsr_experiment}
+本文使用KITTI视觉里程计数据集\cite{geiger2012kitti}验证本章提出的单目深度估计和尺度计算算法。算法实现主要基于C++程序设计语言，其中深度学习部分的实现基于Caffe深度学习框架\cite{jia2014caffe}，视觉里程计部分基于ORBSLAM2\cite{mur2017orb}。
+深度估计的网络训练过程分成了初始神经网络参数训练和条件随机场训练两个阶段：在第一阶段，首先使用预训练的参数初始化网络的特征提取部分ResNet-50，然后使用KITTI数据集中序列00和02中的2100张照片进行ResNet-50的参数微调和全卷积网络的训练，进而获取深度估计神经网络中的参数$\mathbf{\omega}$；在第二阶段，增加条件随机场，通过最小化能量函数获取条件随机场中的权重参数$\alpha_1$和$\alpha_2$。
+本文使用KITTI数据集序列08、09和10作为测试集，
+测试过程分为尺度计算和深度估计两个进程，深度估计进程使用训练好的神经网络模型估计单张图像的深度，同时尺度计算过程获取相机的相对运动和特征点的三维坐标。然后两个进程开始进入循环迭代优化模式：尺度计算进程利用深度估计值计算绝对尺度；深度估计进程将运动估计作为输入利用条件随机场优化深度估计值。为提高实时性，在具体实现上迭代优化只进行一个周期。本节将分别定性和定量分析本章所提出算法对单目深度估计（第\ref{sec:deepsr_exp_depth}节）和单目视觉里程计（第\ref{sec:deepsr_exp_vo}节）的效果。
+
+\subsection{深度估计效果}
+\label{sec:deepsr_exp_depth}
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/001315cut.png}
+        \caption{input}
+    \end{subfigure}
+    \vspace*{2mm}
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/002399cut.png}
+        \caption{input}
+    \end{subfigure}
+    \vspace*{2mm}
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/002784cut.png}
+        \caption{input}
+    \end{subfigure}
+    \vspace*{2mm}
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/1315GTfill.jpg}
+        \caption{gt}
+    \end{subfigure}
+    \vspace*{2mm}
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/2399GTfill.jpg}
+        \caption{gt}
+    \end{subfigure}
+    \vspace*{2mm}
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/2784GTfill.jpg}
+        \caption{gt}
+    \end{subfigure}
+
+    \vspace*{2mm}
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/1315RG.jpg}
+        \caption{regression}
+    \end{subfigure}
+    \vspace*{2mm}
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/2399RG.jpg}
+        \caption{regression}
+    \end{subfigure}
+    \vspace*{2mm}
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/2784RG.jpg}
+        \caption{regression}
+    \end{subfigure}
+    \vspace*{2mm}
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/1315CRF.jpg}
+        \caption{crf}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/2399CRF.jpg}
+        \caption{crf}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/2784CRF.jpg}
+        \caption{crf}
+    \end{subfigure}
+
+    \caption{深度估计效果图}
+    \label{fig:depth_estimation}
+\end{figure}
+\subsubsection{深度定性评价}
+本节首先定性地分析了深度估计的效果，如图\ref{fig:depth_estimation}所示。图中分别可视化了神经网络输入的RGB图片、深度图像的真实值、深度神经网络回归后的
+深度值和条件随机场优化之后的深度值。其中KITTI数据集的深度真值是激光雷达提供的，由于激光雷达数据的稀疏性，仅有约5\%的像素点存在深度真值，图中的稠密深度真值为使用Levin等\cite{levin2004colorization}算法填充之后的结果。
+从图中可以看出，本文所估计的初始深度与真实值比较接近，但存在一定的异常点。条件随机场模型根据场景一致性进一步对所估计的深度进行提升，同时剔除了部分异常点，使深度估计值变为稀疏。
+
+\subsubsection{深度定量评价}
+为了更好地评价深度估计的效果以及条件随机场对深度估计结果的影响，本文定量评价了所提出的算法在测试集所获取的初始回归深度和条件随机场优化深度，评价指标为：
+\begin{enumerate}
+    \item 平均相对误差（记为rel）：$rel = \frac{1}{N}\sum_{i=1}^N \frac{|\underline{d_i}-d_i|}{\underline{d_i}}$
+    \item 平均对数误差（记为$\log_{10}$）：$log_{10}=\frac{1}{N}\sum_{i=1}^N |\log_{10}\underline{d_i}-\log_{10} d_i|$
+    \item 均方根误差（记为rms）：$rms = \sqrt{\frac{1}{N}\sum_{i=1}^N|\underline{d_i}-d_i|}$
+\end{enumerate}
+并将算法与同时期其它采用临近帧进行单目深度估计的算法包括Karsch\cite{karsch2014depth} 和 Ranftl\cite{ranftl2016dense}进行了定量比较，实验结果
+记录于表\ref{tab:dmvosr_depth}中。从表中可以看出，本文未优化的初始回归深度估计值与其它算法基本持平，略优于Karsch等人的工作，但稍差于Ranftl等人的工作。条件随机场大幅提升了深度估计值的精度，优化后的精度明显优于Karsch等人的工作和Ranftl等人的工作。
+\input{data/tables/dmvosr_depth.tex}
+
+\subsection{尺度恢复效果}
+\label{sec:deepsr_exp_vo}
+\begin{figure}
+    \centering
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/08.pdf}
+        \caption{08}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/09.pdf}
+        \caption{09}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/10.pdf}
+        \caption{10}
+    \end{subfigure}
+    \caption{轨迹对比图}
+    \label{fig:dmvosr_path}
+\end{figure}
+\input{data/tables/dmvosr_vo.tex}
+我们将所提出的尺度恢复算法在KITTI数据集上进行了评估，使用数据集中的序列08，09和10对算法进行
+了定量和定性评价，轨迹效果如图\ref{fig:dmvosr_path}所示。图中VISO-M和VISO-S为LibVISO\cite{Kitt2010IV}的单目版本和双目版本。从图中可以看出，本文方法所获得的轨迹在08和10序列与VISO-S双目效果接近，远优于VISO-M单目，但在序列09中轨迹漂移较大。实验定量评价结果记录于表\ref{tab:dmvo_kitti_compare_1}和表\ref{tab:dmvo_kitti_compare_2}中。
+从表中可以看出，本章算法的性能优于基于深度学习的单目视觉里程计算法P-CNN VO。此外与Song等人\cite{Song2015MoncularScale}的尺度恢复算法
+以及VISO2-M+GP\cite{Song2015MoncularScale}进行了性能比较，本文算法在KITTI序列08和10效果都很好，优于Song等人的
+算法，但在序列09上性能不佳，以至于平均精度低于Song等人的算法。分析了09序列算法性能异常的原因时发现：
+在09中大部分场景都是草地和路面（如图\ref{fig:dmvosr_data_diff}），建筑和车辆等很少，与训练数据集差异较大，使得深度估计不准，导致尺度恢复效果较差。如果可以增加
+更多训练数据集，本算法具备进一步提升准确性和鲁棒性的潜力。
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[c]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/00.png}
+        \caption{00}
+    \end{subfigure}
+    \vspace*{2mm}
+    \begin{subfigure}[c]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/08.png}
+        \caption{08}
+    \end{subfigure}
+    \vspace*{2mm}
+    \begin{subfigure}[c]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/09.png}
+        \caption{09}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{dmvosr/10.png}
+        \caption{10}
+    \end{subfigure}
+    \caption{数据差异示意图}
+    \label{fig:dmvosr_data_diff}
+\end{figure}
+
+
+
+\section{本章小结}
+\label{sec:deepsr_conclusion}
+%总结性话语；实现方法；实验
+本章提出了一种融合单目深度估计的单目视觉里程计尺度计算方法。将单目深度估计和单目视觉里程计尺度计算两个问题进行了有机的融合，提出了基于运动估计对单目深度估计精度的提升算法和基于所估计深度的单目视觉里程计尺度计算算法。借助条件随机场通过帧间运动估计将前后帧的光度一致性融入于深度估计，并考虑帧内相邻像素的深度连续性等场景结构信息提升了单目深度估计的精度。同时，研究基于所估计的深度计算单目视觉里程计尺度，考虑到噪声和异常点的影响，使用
+学生t分布表征尺度残差，并使用期望最大算法求解了尺度系数。最后在KITTI数据集上对本文提出的深度估计方法和尺度计算方法进行验证，并与同时期的其它方法进行比较，实验表明本章提出深度优化算法可以大幅度提升单目深度估计的精度并对异常点进行有效剔除，同时本文的尺度恢复方法可以实现鲁棒地尺度计算。
+

@@ -1,0 +1,23 @@
+\chapter{Geometry-based End to End visual odometry}
+Visual odoemtry is an important method for localization and ego-motion estimation for mobile robots. Learning-based solutions for visual odometry become more and more popular as it reduce the efforts for sensor calibration and parameter tuning. However, the current performance of learning-based method is not good. We argue that one reason should be that most current learning-based methods utilize multiple  convolution layers to model the mapping from image-pair to ego-motion, however convolution layers are designed for modeling feature extraction and description, not for modeling geometry calculation. We proposed to model the ego-motion mapping with a new structure which contains new kind of layer in order to improve the performance. 
+
+The structure of proposed ego-motion estimation network is shown in Fig. \ref{}. Taking the geometry-based method in to consideration, we can know that, the solution for visual odometry should contains three parts: feature extraction, feature matching and ego-motion calculation. We imitate that structure and keep the three parts in our designed structure. Convolution layers are used for feature extraction; we proposed a matching layer to imitate the feature matching process; ego-motion calculation model is realized by fully connected layers.
+
+The main contribution of this work are: 
+\begin{itemize}
+
+\item We proposed a new neural network structure for ego-motion estimation. In this new structure, we utilize a novel matching layer. 
+
+\item We test our proposed method in Kitti dataset, TUM dataset and our collected dataset, and found that( the performance overcome the state of the art.)
+
+\item We test the training model on new unknown datasets  and found that our method is with good generalization ability. 
+\end{itemize}
+
+\section{Geometry-based Ego-motion Estimation Model}
+Imitating geometry-based ego-motion estimation method, we separate the ego-motion estimation model into three parts: feature extraction, feature matching and ego-motion estimation. They are trained end to end. We descried our proposed method in case which it is trained supervised, but the proposed method can also be trained unsupervised. 
+
+\subsection{Model Structure}
+We utilize convolution layers for feature extraction.
+\begin{equation}
+    \mathbf{F} =M_f \left( \mathbf{I}\right)
+\end{equation}

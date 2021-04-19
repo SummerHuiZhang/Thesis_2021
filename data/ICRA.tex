@@ -1,0 +1,74 @@
+
+\begin{figure*}[h]
+    \centering
+    \begin{subfigure}[t]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{mvosr/fig_scale/orb_00_crop.pdf}
+    \caption{00 ORB NO LC}
+    \label{fig:orb_path_00}
+    \vspace{4pt}
+    \end{subfigure}
+    \begin{subfigure}[t]{0.23\textwidth}
+        \includegraphics[width=\textwidth]{mvosr/fig_scale/orb_00_17_crop.pdf}
+        \caption{00 ORB NO LCx17}
+        \label{fig:orb_path_00_17}
+        \vspace{4pt}
+        \end{subfigure}
+        \begin{subfigure}[t]{0.23\textwidth}
+            \includegraphics[width=\textwidth]{mvosr/fig_scale/scale_00_crop.pdf}
+            \caption{00 Scale Parameter}
+            \label{fig:scale_00}
+            \vspace{4pt}
+            \end{subfigure}
+            \begin{subfigure}[t]{0.23\textwidth}
+                \includegraphics[width=\textwidth]{mvosr/fig_scale/path_00_crop.pdf}
+                \caption{00 Scale Recovery Path}
+                \label{fig:scaled_path_00}
+                \vspace{4pt}
+                \end{subfigure}
+    \begin{subfigure}[t]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{mvosr/fig_scale/orb_05_crop.pdf}
+    \label{fig:orb_path_05}
+    \caption{ 05 ORB NO LC}
+    \vspace{4pt}
+    \end{subfigure}
+    \begin{subfigure}[t]{0.23\textwidth}
+        \includegraphics[width=\textwidth]{mvosr/fig_scale/orb_05_17_5_crop.pdf}
+        \label{fig:orb_path_05_175}
+        \caption{05 ORB NO LC*17.5}
+        \vspace{4pt}
+        \end{subfigure}
+        \begin{subfigure}[t]{0.23\textwidth}
+            \includegraphics[width=\textwidth]{mvosr/fig_scale/scale_05_crop.pdf}
+            \label{fig:scale_05}
+            \caption{05 Scale Parameter}
+            \vspace{4pt}
+            \end{subfigure}
+            \begin{subfigure}[t]{0.23\textwidth}
+                \includegraphics[width=\textwidth]{mvosr/fig_scale/path_05_crop.pdf}
+                \label{fig:scaled_path_05}
+                \caption{05 Scale Recovery Path}
+                \vspace{4pt}
+                \end{subfigure}   
+    \begin{subfigure}[t]{0.23\textwidth}
+        \includegraphics[width=\textwidth]{mvosr/fig_scale/orb_08_crop.pdf}
+        \label{fig:orb_path_08}
+        \caption{08 ORB NO LC}
+        \end{subfigure}
+        \begin{subfigure}[t]{0.23\textwidth}
+            \includegraphics[width=1.005\textwidth]{mvosr/fig_scale/orb_08_25_crop.pdf}
+            \label{fig:orb_path_08_25}
+            \caption{08 ORB NO LC x25}
+            \end{subfigure}
+            \begin{subfigure}[t]{0.23\textwidth}
+                \includegraphics[width=\textwidth]{mvosr/fig_scale/scale_08_crop.pdf}
+                \label{fig:scale_08}
+                \caption{08 Scale Parameter}
+                \end{subfigure}
+                \begin{subfigure}[t]{0.23\textwidth}
+                    \includegraphics[width=\textwidth]{mvosr/fig_scale/path_08_crop.pdf}
+                    \label{fig:scaled_path_08}
+                    \caption{08 Scale Recovery Path}
+                    \end{subfigure}
+    \caption{在KITTI数据集序列00、05、08上与无LC的ORB-SLAM2的尺度恢复性能比较。第一列中的三个数字是没有环路闭合的单目ORB-SLAM2轨迹，显然尺度发生了明显的错误。第二列为通过对应序列的前100帧尺度校正乘以17.0、17.5、25.0三个固定尺度参数得到的轨迹。第四列是第三列中乘以我们估计的尺度参数得到的轨迹。}
+    \label{fig:scale_recovery}
+\end{figure*}

@@ -1,0 +1,826 @@
+\chapter{增量式定位--单目视觉里程计几何尺度估计}
+
+近年来，人们提出了多种视觉里程表恢复方法。从\textbf{尺度scale}概念来看，解决思路大致可以分为两类：相对尺度校正和绝对尺度恢复。前者致力于将机器人自我运动保持在同一尺度下，以保持全局一致性；后者借助给定的绝对度量参考，计算每一帧的真实尺度。
+%TMM摘要：
+我们将固定在机器人上的相机至路面高度作为绝对尺度参考，提出了一种基于路面几何模型的单目视觉里程计尺度恢复算法。在从未探索过的环境种，单目视觉里程计是机器人实现自我定位和自主导航的核心模块，而尺度恢复是弥补单目视觉里程计不可或缺的功能，因为它弥补了相机所丢失的度量信息造成的尺度漂移等问题。当将相机高度视为绝对尺度参考系时，尺度恢复的精度取决于路面特征点的筛选和路面模型的建立。大多已有方法将这两个问题独立解决：他们的路面特征点筛选是基于路面颜色信息或者已知的图像固定区域，并没有利用两个方法的优势，将其进行有利结合。
+
+如图\ref{fig:structure_mvosr}所示：单目图像序列、图像相对运动位姿（$\mathbf{R}$和$\mathbf{\bar{t}}$）、匹配特征点作为输入，由VO初始化操作提供。每一帧都会被Delaunay三角剖分进行分割，相邻图像的匹配特征点即三角形的顶点，每个三角形都会通过深度一致性约束进行筛选以判断其是否属于路面。最终筛选得到的路面特征点会用来帮助恢复相机运动$s$。最终，相机绝对尺度下的运动位姿估计$\mathbf{R}$和$\mathbf{s\bar{t}}$得到了解决。在第一次Delaunay三角剖分后的结果图中（左中），所有的点都是通过初始视觉里程测量过程得到的匹配特征点，蓝色的点是选择的满足深度约束的特征点（如III-B1所述），红色的点是不满足深度约束的特征点；在第二次Delaunay三角剖分后的结果图中（左下），蓝色的点是满足道路模型约束的特征点（如III-B1所述），初步通过筛选的路面特征点被用于计算路面模型$\mathbf{n}^T_i\mathbf{x_i}-\bar{h}_{i}=0$，该模型又翻过来结合路面模型约束进行再一次的路面特征点筛选。
+
+我们提出迭代求解道路点选择和道路几何模型计算：我们考虑估计的道路几何模型来检测道路点；考虑检测到的道路点在线更新道路几何模型。筛选出的路面特征点会用于估计路面几何模型，路面几何模型又是路面特征点筛选的一个几何约束；同时，我们采用路面几何信息代替路面颜色信息进行特征点筛选，使得系统更加鲁棒，这两个问题可以互相受益。 此外，对于道路点的选择，也采用了新的解决方案处理这个关键任务。 详细地，我们利用Delaunay三角剖分将图像分割成一组以匹配特征点为顶点的三角形。 每个三角形通过考虑深度和道路模型一致性两个约束条件来确定是否属于道路区域。 此外，我们通过随机样本共识(RANSAC)\cite{fischler1981random}估计具有验证道路点的几何道路模型，并通过中值滤波器去除尺度噪声。 对于道路建模，我们用不同的RANSAC参数检验了翻译误差。研究了中值滤波器和均值滤波器的比较。此外，在VO中，我们根据深度一致性和道路模型约束两个规则来选择道路点。综上所述，我们工作的主要贡献如下：
+\begin{enumerate}
+    \item {本章我们提出了一种基于路面几何信息的鲁棒单目视觉里程计尺度估计方法，将道路点选择和道路几何模型计算结合为一个问题————基于道路几何模型检测道路点，并根据检测到的道路点更新道路模型。}
+    \item {本章提出了一种新的道路点选择策略，该策略受深度一致性和道路模型一致性的约束，并结合Delaunay三角剖分方法提出了该策略。该方法提高了MVO的精度，实现起来很简单。我们公开了可用的源代码\footnote{https://github.com/TimingSpace/MVOScaleRecovery}。}
+\end{enumerate}
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=1.1\textwidth]{mvosr/method/structure_mvosr.pdf}
+    \caption{基于路面几何模型的单目尺度恢复算法框架}
+    \label{fig:structure_mvosr}
+\end{figure*}
+
+\begin{figure*}%[t]
+    \centering
+    \includegraphics[width=0.5\textwidth]{mvosr/method/RoadModel.pdf}
+    \caption{路面模型法向量$n$与车辆平移矩阵$t$方向垂直。道路俯仰角是道路几何模型的一个中心单元，可以从自我运动来估计。 通过考虑道路几何模型。$\Theta_t$，$\Theta_n$ $h_0$ $n$ $\bar{t}$}
+    \label{fig:structure}
+\end{figure*}
+
+\section{道路几何模型计算}
+\label{sec:road_detection}
+毫无疑问，图像特征点集中只有一部分属于道路区域，所以需要对属于路面的特征点进行筛选。道路区域检测的目的是计算包含计算高度摄像头的道路模型公式。本论文以道路几何结构的约束，而非顏色信息来侦测道路区域，因为几何结构比颜色信息更为鲁棒且几何模型在每一帧都会更新。
+
+道路模型估计模块如图所示，\ref{fig:structure}。我们的道路点选择和道路几何模型计算是迭代进行的。它们可以相互受益。通过考虑道路几何模型来检测道路点，然后通过选择
+的三维道路特征点来更新道路几何模型，经过验证的道路点用绿色标记。详细来说，我们提出利用初始运动来粗略估计道路特征的初始选择中的摄像机俯仰角。利用Delaunay三角剖分\cite{Shewchuk1996Triangle}
+将已知三维坐标的特征点划分为多个三角形区域。然后，我们根据深度一致性（算法\ref{alg:depth_selection_1}和\ref{alg:depth_selection_4}）剔除道路异常点，
+被验证的道路点用蓝色标记，如图\ref{fig:structure}所示。然后对剩余的点再次使用Delaunay三角测量，我们根据道路模型的一致性继续剔除道路异常点（算法\ref{alg:flat_selection}）。
+\subsection{基于深度一致性的路面特征点筛选}
+\label{sec:depth}
+\subsubsection{直接剔除法}
+\begin{algorithm}
+    \caption{基于深度一致性的特征点筛除 (直接剔除法)}
+    \KwIn{准路面特征点集$\Omega=\{f_0,f_1,....,f_n\}$，每个点像素坐标 $(u_i,v_i)$及其深度$\bar{d}_i$}
+    \KwOut{认证路面特征点集$\Lambda \subset \Omega$}
+    依据其像素位置，对特征点$\Omega$进行三角剖分，得到三角形集合$\nabla =\{\nabla_0,\nabla_1,...,\nabla_m\},%\quad 
+    \nabla_{i}=\{f_i\in\Omega,\ f_j\in\Omega,\ f_k\in\Omega\}$\\
+    设置$\Lambda = \Omega$\\
+     \For{$t_i=0$ to $m$}
+     {   
+         \For {$\forall  \{f_i,f_j\} \subset \nabla_{i}$}
+         {
+             \If {$(v_i-v_j)(d_i-d_j)>0$}
+             {
+                 $\Lambda = \Lambda - \{f_i,f_j\}$
+             }
+         }
+     }
+  \label{alg:depth_selection_1}
+\end{algorithm}
+匹配的特征点的三维坐标在初始VO处理后就可以得到。它们与实测尺度的坐标保持相同的几何结构。
+第$I_t$帧图像的初始特征点表示为$\Omega=\{f_0,f_1...f_{n}\}$。每个点的二维像素坐标为$\textbf{u}_i$=$(u_i,v_i)$，
+相对尺度下的深度和三维坐标分别表示为$\bar{d}_i$和$\mathbf{\bar{x}}_i$。路点选择方法以$\textbf{u}_i$和$\bar{d}_i$为基础。
+%\newcommand{\mysubfigure}[3][name]{\begin{subfigure}[h]{#2\textwidth}#3 \caption{#1}\end{subfigure}}
+首先，根据特征点在帧$I_t$中的二维投影坐标$(u_i，v_i)$，用Delaunay三角测量法将特征点划分成一系列三角形区域$\nabla$，其顶点就是特征点。
+如果一个特征点$f_i$满足路面几何模型，那么它的深度为
+\begin{equation}
+    \bar{d}_i = \frac{{\bar{h}}_i f_y} {v_i-c_y},
+\end{equation}
+所以我们可以得出结论：$\bar{d}_i\propto\frac{1} {v_i}$。此外，对于路面上的任意两个特征点
+$f_i=(u_i, v_i, \bar{d}_i)$和$f_j=(u_j, v_j, \bar{d}_j)$，有以下关系必然成立：
+\begin{equation}
+    \sigma(i,j)= (v_i - v_j)(\bar{d}_i-\bar{d}_j)\leq 0. 
+\label{eq:depth}
+\end{equation}
+如果$\sigma>0$，则至少有一个特征不属于道路，或者其深度$\bar{d}_i$不正确。对于这两种情况中的任何一种，我们选择将其排除。然而$f_i$和$f_j$中哪一个点应该
+被删除是不确定的。我们提出了两种选择机制：一种是算法\ref{alg:depth_selection_1}中所示的直接删除法，另一种是算法\ref{alg:depth_selection_4}中所示的最大团和集成学习法。
+\subsubsection{最大团和集成学习剔除法}
+\begin{algorithm}
+    \caption{基于深度一致性的路面特征点筛选（最大团筛选）}
+    \KwIn{准路面特征点集$\Omega=\{f_0,f_1,....,f_n\}$, 每个点的像素坐标$(u_i,v_i)$及其深度$\bar{d}_i$}
+    \KwOut{认证路面特征点集$\Lambda\subset\Omega$}
+    设置准路面特征点属于路面的阈值$p_s$，根据像素坐标对准路面特征点集$\Omega$进行三角剖分
+    得到三角形集合$\nabla =\{\nabla_0,\nabla_1,...,\nabla_m\}, \nabla_{i}=\{f_i\in\Omega,\ f_j\in\Omega,\ f_k\in\Omega\}$
+    以$Omega$为节点$V$，即$V=\Omega$，根据$\nabla$生成无向$G={V, E}$，图中的最大团为$\nabla$ 
+%    Set a threshold that the feature point belongs to the road $p_s$, triangulate features $\Omega$ according to its pixel coordinates $(u_i,v_i)$ 
+%    to get triangles set $\nabla =\{\nabla_0,\nabla_1,...,\nabla_m\}, \nabla_{i}=\{f_i\in\Omega,\ f_j\in\Omega,\ f_k\in\Omega\}$
+%    Generate undirected graph $G={V, E}$ according to $\nabla$, nodes are $V=\Omega$, and the largest clique set in the graph is $\nabla$ 
+%    Set the side potential function $P_e$ as a $4\times2$ matrix
+%    Set the maximum clique function $P_m$ as a $8\times8$ matrix
+    \For{$\forall \nabla_i \in \nabla$}     %Set the vote of each point as 0 $vote(f_i)=0$, 
+    {设置每个特征点的投票初始值为0: $\text{vote}(f_i)=0, \forall f_i \in \Omega$
+        \For {$\forall\{f_i,f_j\} \subset \nabla_{i}$}
+        {根据\eqref{eq:feature_poss}计算特征点属于最大团的概率
+            \If {$p(f_i|\nabla_{i})\ge p_s$}
+              {$\text{vote}(f_i)$=$\text{vote}(f_i)+1$}
+            \Else
+              {$\text{vote}(f_i)$=$\text{vote}(f_i)-1$}
+        } 
+    $\Lambda = \{f_i\}, \forall f_i \in \Omega$ and $p(\check{f_i})>0.5$
+    }
+    \label{alg:depth_selection_4}
+\end{algorithm}
+\begin{table}{|c|c|c|c|}
+    \caption{两点之间（四种情形）的势函数定义。在第1-2列中，0表示该点被移除，1表示该点被保留。}
+    \label{tab:max_clique}
+    \centering
+    \begin{tabular}{c c c c}
+    \toprule
+    \multirow{2}{*}{A} & \multirow{2}{*}{B}  &$P_e$&$P_e$ \\
+     &&($\sigma\ge0$)&($\sigma\leq0$)\\
+    \midrule
+   0&0&3&1\\
+   0&1&2&2\\
+   1&0&2&2\\
+   1&1&0&4\\
+   \bottomrule
+   \end{tabular} 
+   \label{tab:Pe}
+ \end{table}
+算法\ref{alg:depth_selection_1}是一种最简单直接的算法，它将不满足方程\eqref{eq:depth}的点$f_i$和$f_j$都删除。此外，一个特征点可能存在于多个三角形中，
+这可能会导致$\sigma$被重复计算，如图\ref{fig:max_clique}所示。为了避免冲突，我们提出了另一种基于最大团和集成学习法的特征点选择方法。此外，一个特征点可能存在于多个三角形中，这可能导致$\sigma$被重复计算。为了避免冲突，我们提出了另一种基于最大团和集成学习法的特征点选择方法。如图 \ref{fig:max_clique}所示，将每个三角形视为一个最大团，一个点可能存在于三个最大团中。这个点是否从路面特征点集合中删除由所有最大团的投票决定。每个最大团内的计算细节在算法\ref{alg:depth_selection_4}中描述，基于非定向图$G$，最大团$\nabla_{i}$中的特征点$f_i$属于道路区域的概率$p(f_i|\nabla_{i})$可以估计为条件概率分布。
+
+\begin{equation}
+    p(f_i|\nabla_{i}) =\frac{\sum_{\check{f_i},f_j,f_k}P_m(f_i,f_j,f_k|\sigma_{ij},\sigma_{jk},\sigma_{ik})}{\sum_{f_i,f_j,f_k}P_m(f_i,f_j,f_k|\sigma_{ij},\sigma_{jk},\sigma_{ik})}
+    \label{eq:feature_poss}
+\end{equation}
+其中$\check{f_i}$表示某点属于道路。$P_m$为各最大组的势函数，其计算方法为：
+\begin{equation}%\small %、scriptsize
+    \begin{split}
+        P_m(f_i,f_j,f_k|\sigma_{ij},\sigma_{jk},\sigma_{ik}) = &{P_e(f_i,f_j|\sigma_{ij})}   \\
+        & \cdot{P_e(f_j,f_k|\sigma_{jk})} \cdot{P_e(f_i,f_k|\sigma_{ik})}
+        \label{eq:clique_potential}
+    \end{split}
+\end{equation}
+其中$P_e(f_i,f_j|\sigma_{ij})$表示当观测值为$sigma_{ij}$时，$P_e(f_i,f_j|\sigma_{ij})$的有效性概率，当观测值是$\sigma_{ij}$时，由公式\eqref{eq:depth}计算出来的。我们为图中的每一条边定义势函数$P_e(f_i,f_j|\sigma_{ij})$，如图\ref{fig:max_clique}中右侧表格所示。两点之间有四个删除或保留的决策，1表示倾向于保持，反之为0。在集成学习的思想下，每个最大组根据概率$p(f_i|\nabla_{i})$对特征点进行投票。只有在$\text{vote}(f_i)$中有一半以上的赞同率，$f_i$才会被验证为道路特征点。
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.8\columnwidth]{mvosr/max_clique.pdf}
+    \caption{Illustration of maximum clique.}
+    \label{fig:max_clique}
+\end{figure}
+    
+\subsection{基于路面模型一致性的特征点筛选}
+\label{sec:RoadNormal}
+我们根据道路模型的一致性，包括角度和距离的一致性，继续选择属于道路的三角形。由于道路模型约束选择是深度一致性选择之后的步骤，我们选择算法\ref{alg:depth_selection_4}
+的输出作为算法\ref{alg:flat_selection}的输入。我们用Delaunay三角测量法再次对剩余的点进行三角测量，即Delaunay三角测量法\cite{Shewchuk1996Triangle}。每个
+三角形的平面三维几何模型可以通过以下方式求解：
+\begin{equation}
+    \mathbf{n_i}^T[\mathbf{x}_{i1},\mathbf{x}_{i2},\mathbf{x}_{i3}] -[\bar{h_i},\bar{h_i},\bar{h_i}]^{T}=[0,0,0]^{T},
+    \label{eq:road_model_1}
+\end{equation}
+上述方程的解是：
+\begin{equation}
+    \mathbf{\bar{n_i}} = [\mathbf{x}_{i1}\\,\mathbf{x}_{i2}\\,\mathbf{x}_{i3}]^{-1}[1,1,1]^{T}
+    \label{eq:road_model_2}    
+\end{equation}
+
+\begin{equation}
+   \begin{cases}
+       \mathbf{n}_{i} =\frac{\mathbf{\bar{n}}_{i}}{\|\mathbf{\bar{n}}_{i}\|},\\
+       \bar{h}_{i} =\frac{1}{\|\mathbf{\bar{n}}_{i}\|}.\\
+   \end{cases}
+   \label{eq:road_model_3}
+\end{equation}
+
+我们在方程\eqref{eq:road_model_1}中再增加两个约束条件，$||n_{i}||=1$和$n_{i_{y}}>0$，得到唯一解。在得到每个三角形区域的几何结构
+$\mathbf{n}_{i}^T\mathbf{x}-h_{i}=0$后，我们先根据角度约束选择三角形，再根据距离约束选择。初始，我们假设摄像头安装时是向前看的，三角形应该位于摄像头下方，
+所以直接删除$bar{h}_i<0$的点。
+
+首先，考虑到移动的连续性，连续帧的法向量应相似，所以只保留法向量与前一帧路面法向量接近的三角形。，我们将三角形区域的几何模型与前一帧的道路模型进行比较，
+由摄像机运动$\mathbf{R}$和$\mathbf{bar{t}}$计算出的法线应该接近估计的道路法线，$n_t$。
+%begin{quation} .
+%label{eq:d_normal}.
+% d_{ij}=\arccos{\mathbf{n}_{i}\cdot\mathbf{n}_{j}}.%|\arccos{\mathbf{n}\cdot\mathbf{n}_{i}}|
+%$end{equation}
+每个三角形区域法线的俯仰角可以通过以下方式计算出来：
+\begin{equation}
+    \theta_i =\arcsin{(-\frac{n_{i2}}{|\mathbf{n}_{i}|})}
+    \label{eq:pitch_n_triangle}
+\end{equation}
+其中$n_{i2}$表示$\mathbf{n}_i$的第二个元素。然后将$\theta_{i}$与道路正常向量的角度$\theta_{r}$进行比较。一般来说，$\theta_{r}$可以直接从最后一帧的道路
+正常向量中估算出来。但是，对于最初的几帧，道路的法向量是未知的，我们必须从运动的$\mathbf{\bar{t}}$来计算。
+严格来说，$\theta_\mathbf{\bar{t}}$只有在摄像机俯角$\theta_{\mathbf{R}}$小于某个阈值时才有效，所以这两个变量都需要计算。
+\begin{equation}
+    \theta_\mathbf{\bar{t}} =
+    \begin{cases}
+        \arcsin{(-\frac{t_{2}}{|\mathbf{\bar{t}}|}}) &\text{if}\quad |\mathbf{\bar{t}}|\neq 0,\\
+        \text{NaN} &\text{if}\quad |\mathbf{\bar{t}}| = 0.\\
+    \end{cases}
+    \label{eq:pitch_t}
+ \end{equation}
+当$|t|=0$时, 说明机器人无运动，无需恢复尺度。$\theta_{\mathbf{R}}$绝对值是
+\begin{equation}
+    \label{eq:pitch_r}
+     |\theta_{\mathbf{R}}| = 
+    \begin{cases}
+         |\arctan{(-\frac{\mathbf{R}_{32}}{\mathbf{R}_{33}})}| & \text{if}\quad\mathbf{R}_{33}\neq 0,\\
+        \frac{\pi}{2}&\text{if}\quad\mathbf{R}_{33} = 0.\\
+    \end{cases}
+ \end{equation}
+%两个法向量之间的关系可以根据它们的俯仰角来分析。
+%两个法向量$\mathbf{n}_{i}$和$\mathbf{n}_{j}$之间的角差也可以通过俯仰角来测量。
+如果$\theta_{\mathbf{R}}$足够小，那么道路法线的俯仰角被估计为$\theta_r=\theta_\mathbf{\bar{t}}-\frac{\pi}{2}$，因为当车辆在道路上行驶时，运动矢量$\mathbf{\bar{t}}$与路面相切，与道路法线正交，如图所示。只有满足以下条件:
+\begin{equation}
+    || \theta_r- \theta_i || < \theta_0 %threshold
+\end{equation}
+的点将被保留。这里$\theta_0$是角隙阈值，我们在实验中设置为10度。
+\begin{algorithm}
+    \caption{基于路面模型的特征点选择}
+    \KwIn{准路面特征点集$\Omega=\{f_0,f_1,....,f_n\}$，每个点的像素坐标$(u_i,v_i)$，相机坐标系下的点坐标$(\bar{x}_i,\bar{y}_i,\bar{z}_i$)，路面模型$\mathbf{n}^T_{i}\mathbf{x}_{i}-\bar{h}_{i}=0$，运动向量$\mathbf{\bar{t}}$\\ }
+    \KwOut{认证路面特征点集$\Gamma \subset \Omega$} %$\Gamma \subset \Lambda$}
+    根据像素坐标对准路面特征点集$\Omega$进行三角剖分， 得到三角形集合$\nabla=\{\nabla_0,\nabla_1,...,\nabla_m\},\nabla_{i}=\{ f_i \in \Omega,\ f_j \in \Omega,\ f_k \in \Omega\}$\\
+%    \If {the last road model is unknown} 
+    \If {上一帧的路面模型未知} 
+        {$\theta_r=\theta_\mathbf{\bar{t}}-\frac{\pi}{2}$，$\theta_\mathbf{\bar{t}}$是$\mathbf{\bar{t}}$的仰角初始值\\}
+        将认证路面三角形集初始化为空集$\Theta =\varnothing$\\
+    \For{$\forall\nabla_i\in\nabla$}
+     {   
+        计算相机高度$\bar{h}_i$，三角形$\nabla_i$的法向量$n_i$和仰角$\theta_i$\\
+         %Calculate the normal $n_i$ and distance of the triangle $\nabla_i $ and height $\bar{h}_i $\\
+         %Calculate triangle pitch angle $\theta_i $\\
+        \If {$||\theta_r- \theta_i|| < 10$}%{$\theta_i <\theta_r-80$}
+         {
+             $\Theta =\Theta + {\nabla_i}$
+         }
+     }
+         %$Calculate the upper half of the effective triangle distance $h_t$
+         
+         Calculate the median of the distance between effective triangles and camera optical center $h_t$\\
+    \For{$\forall\nabla_i\in\Theta$}
+     {   
+        \If {$\bar{h}_{i} <h_t$}
+         {
+             $\Theta =\Theta - {\nabla_i}$
+         }
+     }
+     $\Gamma =\{f_k\}, \forall f_k\in \nabla_i, \forall\nabla_i\in\Theta$
+\label{alg:flat_selection}
+\end{algorithm}
+
+其次，我们继续以摄像机光学中心与三角形区域的距离为约束进行选择。根据道路点相对较低的约束条件，
+选择三角形有效距离的中值作为阈值，将高于该阈值的点视为道路点。利用所选三角形区域$\Gamma$的顶点更新路面几何模型。具体过程如算法\ref{alg:flat_selection}所示。
+
+\subsection{路面模型与绝对尺度计算}
+\label{sec:road_model}
+%todo{添加关于RANSAC和过滤器的公式}。
+在本节中，只对第\ref{sec:road_detection}节中两次选取后存活下来的特征点进行验证，估计道路几何模型和尺度。我们主要利用平面拟合的方法来确定相对尺度的相机高度，
+并利用中值滤波来降低尺度噪声。我们假设道路是一个平面，在帧$I_t$中的几何模型可以表示为:
+\begin{equation}
+    \mathbf{n}^T_i\mathbf{x_i}-\bar{h}_{i}=0,
+    \label{eq:road_model}
+\end{equation}
+其中$\mathbf{n}_i$为道路平面法线，$\bar{h}_{i}$为计算高度。比例尺可以用以下方法恢复：
+\begin{equation}
+    s_i = h_0/\bar{h}_i,
+    \label{eq:scale}
+\end{equation}
+其中$h_0$是给定的摄像机安装高度。应用RANSAC方法\cite{FISCHLER1981Random}对经过验证的道路点进行道路平面估计。如果选择的特征点数量小于一个阈值，我们跳过
+RANSAC步骤，并保持道路几何模型与上次验证的帧相同。我们在实验中设置这个阈值为12。根据车辆速度不会发生剧烈变化的假设，我们在时间维度上对尺度进行过滤，以削弱尺度
+噪声的影响。直接采用独立于噪声模型的中值滤波器来消除噪声，即用前$q$帧估计的尺度系数的中值作为尺度系数。
+RANSAC不同参数下所获得的性能以及不同滤波器大小的影响将在第\ref{sec:parameter_select}节中进行分析。
+
+\begin{equation}
+    s_i = median({s_{i-q+1},s_{i-q+2}...,s_{q}})
+    \label{eq:scale_median}.
+\end{equation}
+由此得到绝对尺度下的位移矩阵是：
+\begin{equation}
+    \mathbf{t} = s_i\bar{\mathbf{t}}.
+    \label{eq:absolute_t}
+\end{equation}
+最后，计算出机器人的绝对运动估计得到解决$\mathbf{R}$和$\mathbf{t}$。
+
+\section{KITTI数据集单目视觉里程计实验}
+我们在常用的公开测评数据集KITTI\cite{geiger2012we}上评估了我们的视觉里程计尺度恢复方法，可用于评估视觉里程计算方法的准确性，是目前应用最广泛的测试环境之一。它由22个序列组成，覆盖了城市、村庄、高速公路等环境，运行长度从数百米到数公里不等。其中，前11个序列提供了真实的运动轨迹。但我们忽略序列01，因为大多数VO方法在这种高速场景下无法提供满意的初始结果。
+此外，我们的主要评估标准是相对姿态误差（RPE）\cite{geiger2012we}和绝对轨迹误差（ATE）\cite{sturm2012benchmark}。RPE测量每个序列中每个固定距离段的$\mathbf{R}$和$\mathbf{t}$的平均相对误差。ATE计算$\mathbf{t}$的绝对误差，这些指标可以通过预处理相似性转换\cite{raul2015orb}来评估尺度漂移消除性能。我们用Python实现了我们的算法，源代码是公开的。所有的实验都是在英特尔酷睿i5，2.7GHz，使用单线程进行的。
+
+我们的实验由三部分组成。首先，我们将我们的单目尺度恢复方法与其他简单开源的VO/SLAM方法结合起来，定量和定性地测试对它们性能改进。其次，设置MonoVO\footnote{https://github.com/uoip/monoVO-python}和ORB-SLAM2 \cite{raul2015orb}作为我们的初始自我运动估计，将我们的方法与四个最先进的VO算法进行比较。最后，给出了每个模块的性能分析和参数探索。
+
+\subsection{对现有单目视觉里程计开源算法的改进}
+为了展示比例尺恢复方法的性能，我们将我们的比例尺校正方法移植到ORB-SLAM2、LibVISO \cite{Geiger2011IV}和MonoVO等三种基于特征的开源定位算法上，并将它们的性能分别与原方法进行比较。
+
+\subsubsection{对ORB-SLAM2视觉里程计性能的提升}
+\label{sec:eva_scale_recovery}
+
+\begin{figure*}[t]
+    \centering
+    \begin{subfigure}[b]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_00.pdf}
+    \caption{00 ORB NO LC}
+    \vspace*{1mm}
+    \label{fig:orb_path_00}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.23\textwidth}
+        \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_00_align.pdf}
+        \caption{00 ORB NO LC Aligened}
+        \label{fig:orb_path_00_17}
+        \vspace*{1mm}
+        \end{subfigure}
+        \begin{subfigure}[b]{0.23\textwidth}
+            \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/00_scale.pdf}
+            \caption{00 Scale Parameter}
+            \label{fig:scale_00}
+            \vspace*{1mm}
+            \end{subfigure}
+            \begin{subfigure}[b]{0.23\textwidth}
+                \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_00_rescale.pdf}
+                \caption{00 Scale Recovery Path}
+                \label{fig:scaled_path_00}
+                \vspace*{1mm}
+                \vspace*{1mm}
+                \end{subfigure}
+    \begin{subfigure}[b]{0.23\textwidth}
+        \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_02.pdf}
+        \caption{02 ORB NO LC}
+        \vspace*{1mm}
+        \label{fig:orb_path_02}
+        \end{subfigure}
+        \begin{subfigure}[b]{0.23\textwidth}
+            \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_02_align.pdf}
+            \caption{02 ORB NO LC Aligned}
+            \label{fig:orb_path_02_aligned}
+            \vspace*{1mm}
+            \end{subfigure}
+            \begin{subfigure}[b]{0.23\textwidth}
+                \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/02_scale.pdf}
+                \caption{02 Scale Parameter}
+                \label{fig:scale_02}
+                \vspace*{1mm}
+                \end{subfigure}
+                \begin{subfigure}[b]{0.23\textwidth}
+                    \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_02_rescale.pdf}
+                    \caption{02 Scale Recovery Path}
+                    \label{fig:scaled_path_02}
+                    \vspace*{1mm}
+                    \vspace*{1mm}
+                    \end{subfigure}
+    \begin{subfigure}[b]{0.23\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_05.pdf}
+    \label{fig:orb_path_05}
+    \caption{ 05 ORB NO LC}
+    \vspace*{1mm}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.23\textwidth}
+        \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_05_align.pdf}
+        \label{fig:orb_path_05_175}
+        \caption{05 ORB NO LC Aligned}
+        \end{subfigure}
+        \begin{subfigure}[b]{0.23\textwidth}
+            \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/05_scale.pdf}
+            \label{fig:scale_05}
+            \caption{05 Scale Parameter}
+            \end{subfigure}
+            \begin{subfigure}[b]{0.23\textwidth}
+                \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_05_rescale.pdf}
+                \label{fig:scaled_path_05}
+                \caption{05 Scale Recovery Path}
+                \vspace*{1mm}
+                \end{subfigure}   
+    \begin{subfigure}[b]{0.23\textwidth}
+        \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_08.pdf}
+        \label{fig:orb_path_08}
+        \caption{08 ORB NO LC}
+        \end{subfigure}
+        \begin{subfigure}[b]{0.23\textwidth}
+            \includegraphics[width=1.005\textwidth]{figures/mvosr/fig_scale/orb_08_align.pdf}
+            \label{fig:orb_path_08_25}
+            \caption{08 ORB NO LC Aligned}
+            \end{subfigure}
+            \begin{subfigure}[b]{0.23\textwidth}
+                \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/08_scale.pdf}
+                \label{fig:scale_08}
+                \caption{08 Scale Parameter}
+                \end{subfigure}
+                \begin{subfigure}[b]{0.23\textwidth}
+                    \includegraphics[width=\textwidth]{figures/mvosr/fig_scale/orb_08_rescale.pdf}
+                    \label{fig:scaled_path_08}
+                    \caption{08 Scale Recovery Path}
+                    \vspace*{1mm}
+                    \end{subfigure}
+    \caption{在KITTI数据集序列00、02、05、08上与无LC的ORB-SLAM2的尺度恢复性能比较。第一列中三个图像是没有环路闭合检测的单目ORB-SLAM2轨迹，显然尺度发生了明显的错误。第二列为对应序列的前100帧通过7-dof尺度校正得到的轨迹。第四列是第一列图像与我们估计的尺度参数（第三列）相运算得到的轨迹。}
+    {\label{fig:scale_recovery}}
+\end{figure*}
+
+我们将我们的方法与ORB-SLAM2(无LC)进行定性比较，如图\ref{fig:scale_recovery}和图\ref{fig:orb_noLC_scale_recovery}所示，并与ORB-SLAM2(有LC)进行定量比较，如表\ref{tab:orb_scale_drift_LC}所示。
+
+首先，我们将我们的算法添加到单目ORB-SLAM2（无LC）中，以比较固定和计算尺度的轨迹。在计算ORB-SLAM2中摄像机的初始运动之前，我们关闭全局优化和环路闭合检测，以避免额外的尺度漂移优化。
+
+%考虑到车辆运行时间较长，面临较明显的尺度漂移问题，我们选择了KITTI数据集的00（3.7 km）、05（2.2 km）和08（2.8 km）三个长距离序列。如图：\ref{fig:scale_recovery}b、\ref{fig:scale_recovery}f和\ref{fig:scale_recovery}j所示，虽然我们将三个固定的尺度参数与第一列相乘，但它们仍然存在严重的尺度漂移问题，尤其是在后期。因此，用固定比例尺恢复轨迹是不可行的。这三个比例系数17.0、17.5、25.0，分别与序列00、05、08的前100帧对齐计算。图中第三列\ref{fig:scale_recovery}显示了我们估计的尺度参数和地面真实尺度参数的对比。地面真实参数的计算方法是：
+
+考虑到较长的车辆运行面临较明显的尺度漂移问题，选择了KITTI数据集中的00（3.7公里）、02（5.1公里）、05（2.2公里）和08（2.8公里）四个长距离序列。从图\ref{fig:scale_recovery}b，\ref{fig:scale_recovery}f，\ref{fig:scale_recovery}j和\ref{fig:scale_recovery}n中可以看出，虽然我们对第一列的初始路径进行了对齐，但仍然存在严重的尺度漂移问题，尤其是在后期。因此，用固定比例尺恢复轨迹是不可行的。图中第三列\ref{fig:scale_recovery}显示了我们估计的尺度参数和地面真实尺度参数的对比。地面真值尺度参数的计算方法为
+\begin{equation}
+    s_g = \frac{||\mathbf{t_g}||}{||\mathbf{\bar{t}}_i||}
+    %    s_g = \frac{\sum_{i=1}^{3}\frac{t_i}{\bar{t}_i}t_i}{\sum_{i=1}^{3}{t_i}},
+\end{equation}
+其中$\mathbf{t_g}$是以自我运动估计位移的ground-truth。估计的尺度参数由中值滤波器过滤。通过将我们估计的尺度参数与初始的相对位移矩阵相乘，我们得到了绝对尺度下的自我运动估计结果，如图\ref{fig:scale_recovery}d，\ref{fig:scale_recovery}h，\ref{fig:scale_recovery}l和\ref{fig:scale_recovery}所示。加入我们的尺度漂移消除模块后，定性比较来看机器人移动轨迹与ground-truth更接近。
+%图\ref{fig:orb_noLC_scale_recovery}中收集了更多由ORB-SLAM2(不含LC)和我们的尺度恢复算法组合得到的轨迹。考虑到ORB-SLAM2在序列02中的第2005帧（共4661帧）(图\ref{fig:orb_noLC_path_02})、08中的第3539帧（共4071帧）(图\ref{fig:orb_noLC_path_08})和09中的第761帧（共1591帧）(图\ref{fig:orb_noLC_scale_recovery}i)发生丢失，图示这些轨迹只是丢失前的部分。
+
+\begin{figure*}{h}
+    \centering
+    \begin{subfigure}[c]{0.22\textwidth}
+        \includegraphics[width=\textwidth]{mvosr/path_fig/00.pdf}
+        \caption{00}
+        \vspace*{2mm}
+        \label{fig:orb_noLC_path_00}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.22\textwidth}
+        \includegraphics[width=\textwidth]{mvosr/path_fig/02.pdf}
+        \caption{02}
+        \label{fig:orb_noLC_path_02}
+        \vspace*{2mm}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.22\textwidth}
+            \includegraphics[width=\textwidth]{mvosr/path_fig/03.pdf}
+        \caption{03}
+        \label{fig:orb_noLC_path_03}
+        \vspace*{2mm}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.22\textwidth}
+        \includegraphics[width=\textwidth]{mvosr/path_fig/04.pdf}
+        \caption{04}
+        \label{fig:orb_noLC_path_04}
+        \vspace*{2mm}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.22\textwidth}
+        \includegraphics[width=\textwidth]{mvosr/path_fig/05.pdf}
+        \caption{05}
+        \label{fig:orb_noLC_path_05}
+        \vspace*{2mm}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.22\textwidth}
+        \includegraphics[width=\textwidth]{mvosr/path_fig/06.pdf}
+        \caption{06}
+        \label{fig:orb_noLC_path_06}
+        \vspace*{2mm}
+        \end{subfigure}
+    \begin{subfigure}[c]{0.22\textwidth}
+        \includegraphics[width=\textwidth]{mvosr/path_fig/07.pdf}
+        \caption{07}
+        \label{fig:orb_noLC_path_07}
+        \vspace*{2mm}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.22\textwidth}
+        \includegraphics[width=\textwidth]{mvosr/path_fig/08.pdf}
+        \caption{08}
+        \label{fig:orb_noLC_path_08}
+        \vspace*{2mm}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.22\textwidth}
+        \includegraphics[width=\textwidth]{mvosr/path_fig/09.pdf}
+        \caption{09}
+        \label{fig:orb_noLC_path_09}
+        \vspace*{2mm}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.22\textwidth}
+        \includegraphics[width=\textwidth]{mvosr/path_fig/10.pdf}
+        \caption{10}
+        \label{fig:orb_noLC_path_10}
+        \vspace*{2mm}
+    \end{subfigure}   
+    \caption{}
+\label{fig:orb_noLC_scale_recovery}
+\end{figure*}
+
+以ORB-SLAM2（无LC）的初始运动作为基准，在KITTI数据集序列00和02-10上得到的视觉里程计轨迹。每个子图中的红线是轨迹ground-truth，蓝线是经过我们的绝对尺度恢复方法校准后的轨迹。
+
+其次，我们对ORB-SLAM2(带LC)和我们的方法进行了性能量化比较，说明我们的尺度恢复算法在消除尺度漂移方面效果更好。评价标准是ATE，如表\ref{tab:orb_scale_drift_LC}所示。使用ATE的原因是ORB-SLAM2的单目版不提供尺度计算，不能直接计算RPE。%ATE在评估前将轨迹对准绝对尺度，以评估尺度模糊的影响。
+具有7-自由度对齐（平移、旋转和尺度）的ATE误差可以在评估前在绝对尺度上对齐轨迹，以评估尺度模糊性的影响。
+
+在大多数序列中，我们的VO效果优于ORB-SLAM2（有LC模块）的效果。对于小尺度的轨迹，如04、06和07，我们的方法和ORB-SLAM2与LC之间的误差差距很小。但是，由于我们的算法可以恢复绝对尺度，消除尺度漂移，所以在所有长轨迹上都可以达到满意的误差。
+
+\begin{table}
+    \caption{ORB-SLAM2中，采用尺度漂移与环路闭合检测两种方法时对绝对平移误差（ATE）的影响。}
+    \label{tab:orb_scale_drift_LC}
+    \centering
+    \begin{tabular}{l c c c c}
+    \toprule
+    \multirow{3}*{Seq}&Running distance&ORB+LC&ORBnoLC+Our SR  \\
+        &   & \cite{raul2015orb} &\\
+     &(m$\times$m)&ATE(m)&ATE(m)\\
+ \midrule
+ 00&3724&6.68 &\textbf{5.56}\\
+ 02&5067&21.75&\textbf{4.36}\\
+ 03&561&1.59&\textbf{1.36}\\
+ 04&394&\textbf{1.79}&2.36\\
+ 05&2206&8.23&\textbf{8.03}\\
+ 06&1233&\textbf{14.68}&18.36\\
+ 07&695&\textbf{3.36}&5.16\\
+ 08&3223&46.58&\textbf{5.64}\\
+ 09&1705&7.62&\textbf{2.53}\\
+ 10&920&8.68&\textbf{2.33}\\
+ \midrule
+ Average&1972.80&12.10&\textbf{5.56}\\
+ \bottomrule
+ \end{tabular}
+ \end{table}
+ 
+\subsubsection{对LIBVISO2性能的提升}
+LibVISO2是一个开源的C++库，用于测量视觉里程计。它通过双核和非最大抑制的响应提取特征。根据这三个点，计算出它们的矩阵旋转矩阵$R$和位移矩阵$t$来表示两帧之间的姿态变换。它提供了一种和我们一样基于局部平面地面和摄像机高度的简单比例计算方法，
+我们用本文提出的比例恢复算法来代替它，以测试对LibVISO2单目版本算法的改进。为方便起见，本文将LibVISO2使用pybind11封装成Python库\footnote{https://github.com/SummerHuiZhang/Libviso-Python}。
+如表\ref{tab:orb_scale_drift_LibVISO}所示，通过与我们的尺度恢复算法相结合，LibVISO2的性能得到了极大的提升。以序列00为例，加入我们的尺度恢复算法后，RPE从9.77\%下降到6.51\%。在序列02、03、04和10中，
+这种改进尤为明显。平均RPE从14.18\%下降到7.11\%。且当车头通常被其他车辆挡住时，LibVISO2很难运行，如序列07中出现的情况。
+\begin{table}
+    \caption{Improvement on LibVISO2.}
+    \label{tab:orb_scale_drift_LibVISO}
+    \centering
+\begin{tabular}{l c c c c c}
+\toprule
+\multirow{3}*{Seq}&Running distance&Rotation error&LibVISO2&LibVISO2+Our SR\\
+       &&\cite{raul2015orb}&\cite{Geiger2011IV}\\
+       &(m$\times$m)&RPE(deg/m)&RPE(\%)&RPE(\%)\\
+\midrule
+00&3724&0.0267&9.77 &\textbf{6.51}\\
+02&5067&0.0136&16.40&\textbf{3.89}\\
+03&561&0.0200&22.85&\textbf{4.81}\\
+04&394&0.0292&18.79&\textbf{6.70}\\
+05&2206&0.0382&12.22&\textbf{12.0}\\
+06&1233&0.0255&9.42&\textbf{9.19}\\
+%07&694&3.36&\textbf{5.16}\\
+08&3223&0.0223&9.60&\textbf{7.83}\\
+09&1705&0.0143&9.82&\textbf{5.20}\\
+10&920&0.0378&18.70&\textbf{7.86}\\
+\midrule
+Average&1903.30&0.0253&14.18&\textbf{7.11}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{对MonoVO性能的提升}
+MonoVO是一个简单的基于OpenCV的开源MVO项目，它用FAST描述符\cite{Rosten2006Machine}提取特征，并用光流跟踪它们。MonoVO确实提供了一个方便的五点运动估计，但它缺乏尺度计算。
+因此，我们将我们的尺度恢复算法与原始MonoVO和带有特征稀疏化的MonoVO结合起来，测试我们的方法在这种简单VO方法上的性能。
+
+\begin{table}[h]
+    \caption{Improvement on MonoVO}
+    \label{tab:orb_scale_drift_MonoVO}
+\begin{center}
+\setlength{\tabcolsep}{2mm}{
+\begin{tabular}{l c c c c c c}
+\toprule
+\multirow{3}*{Seq}&Rotation error & MonoVO &MonoVO-ROI &MonoVO-SR\\
+       &\cite{raul2015orb}&&&\\
+       &RPE(deg/m)&RPE(\%) & RPE(\%)&RPE(\%)\\
+\midrule
+00&0.0046&36.44&20.32&\textbf{2.51}\\
+02&0.0059&46.19&7.28&\textbf{2.33}\\
+03&0.0048&46.19&12.06&\textbf{5.65}\\
+04&0.0036&55.92&14.12&\textbf{2.40}\\
+05&0.0316&35.43&27.93&\textbf{8.48}\\
+06&0.0057&22.94&17.14&\textbf{2.32}\\
+%07&694&30.92&27.20&\textbf{18.19}\\
+08&0.0072&32.47&16.27&\textbf{3.05}\\
+09&0.0062&33.50&12.26&\textbf{2.15}\\
+10&0.0162&28.32&20.00&\textbf{4.92}\\
+\midrule
+Average&0.0096&37.50&16.38&\textbf{3.76}\\
+\bottomrule
+\end{tabular}
+}
+\end{center}
+\end{table}
+
+结合我们的尺度恢复算法(称为MonoVO-SR)，对原始MonoVO的改进如表\ref{tab:orb_scale_drift_MonoVO}\ref{tab:orb_scale_drift_MonoVO_M}所示。MonoVO-ROI和MonoVO-SR都是MonoVO和本文提出的方法的组合，不同的是MonoVO-SR的性能比原来的MonoVO和MonoVO-ROI都要好，MonoVO-ROI假设ROI是固定的道路。以序列00为例，MonoVO和MonoVO-ROI的RPE分别为36.44％和20.32％。加入我们的规模恢复算法后，降低到2.51\%。改善明显，平均RPE从37.75\%急剧下降到3.76\%。
+
+此外，我们观察到，分散的特征点可以进一步帮助提高MonoVO的性能。我们将原始MonoVO的特征点分散开来，并在每个切割的$30\times30$像素区域随机选择两个点。然后我们在分散的MonoVO上加入我们的尺度恢复方法(称为ST-MonoVO-SR)，
+结果如表\ref{tab:orb_scale_drift_MonoVO_M}所示。我们可以看到，ST-MonoVO-SR在所有测试序列上都优于特征稀疏化的MonoVO，平均RPE从10.30％提高到2.13％。此外，从表\ref{tab:orb_scale_drift_MonoVO}和
+表\ref{tab:orb_scale_drift_MonoVO_M}的比较中，我们也可以得出结论，分散的特征点避免了很多模糊性，确实有助于提高MonoVO的性能。ST-MonoVO-SR将是我们与其他机器人自我运动估计算法比较时的系统之一。
+
+%\subsection{与其他VO算法的比较}
+\label{sec:overall_evaluation}
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.98\columnwidth,height=0.4\columnwidth]{mvosr/method/feature_point_vert_dis_3.pdf}
+    \caption{算法1-3对KITTI序列00的前500帧特征点分布的初步测试。绿线表示深度一致性选择（算法1和2）后的点分布。黄线表示深度和道路模型一致性选择后的点分布（算法1-3）。}
+    \label{fig:GlobalDistribution}
+\end{figure}
+我们将我们的比例尺恢复方法与散射的MonoVO（ST-MonoVO-SR），以及没有LC的ORB-SLAM2（ORBSLAM2-SR）结合起来，并与四种最先进的视觉里程计方法，在KITTI数据集的序列00和02-10上进行比较，他们分别来自\cite{Song2015MoncularScale}、\cite{Geiger2011IV}、
+\cite{Lee2015MoncularScale}和\cite{zhou2016reliable}。如表\ref{tab:kitti_compare}所示，我们算法的平均误差低于其他单目尺度恢复算法，与LibVISO2-stereo算法相当。我们的方法也优于在大多数序列上失败的\cite{zhou2016reliable}的方法。
+虽然Lee\cite{Lee2015MoncularScale}提出的方法在序列01（一个高速场景）上有效，但它在其他序列上的表现比我们的差。\cite{Song2015MoncularScale}的算法假设一个ROI作为路面，所以当车前被其他物体挡住时，它很难计算出路面的几何模型，就像序列07中发生的那样。但是，当使用ORB-SLAM2作为我们的前端时，我们仍然可以在序列07中通过在线识别路面面积获得相对稳定的结果1.73\%。
+
+值得强调的是，虽然ORB-SLAM2-SR（ORB-SLAM2和本方法的组合）的性能更好，但ST-MonoVO-SR（MonoVO和本方法的组合）更能证明本方法的效果。MonoVO原本方法比ORB-SLAM2简单得多且精度较差，我们的尺度恢复方法大大提高了它的精度。
+
+\begin{figure}[t]
+    \centering
+    \begin{subfigure}[c]{0.95\textwidth}
+    \includegraphics[width=\textwidth]{mvosr/method/feature_sample_dis_good.pdf}
+    \caption{}
+    \end{subfigure}
+    \begin{subfigure}[c]{0.95\textwidth}
+    \includegraphics[width=\textwidth]{mvosr/method/feature_sample_dis_bad.pdf}
+    \caption{}
+    \end{subfigure}
+    \caption{在KITTI序列00的两帧上对算法1至3进行初步测试。标签"Depth-Correct Features"代表算法1和2之后的分布，标签"Selected Features"代表算法1至3的分布。(a)第10帧。(b)第20帧。}  
+\end{figure}
+
+\begin{table}
+    \centering
+    \setlength{\tabcolsep}{1mm}{
+    \begin{tabular}{l c c c c c c c c c c c c c}
+    \toprule  
+    \multirow{4}*{Seq} & \multicolumn{2}{c}{Zhou \textit{et al}.} & \multicolumn{2}{c}{LibVISO2-stereo} & \multicolumn{2}{c}{Lee \textit{et al}.}& \multicolumn{2}{c}{Song \textit{et al}.} & \multicolumn{2}{c}{\multirow{2}*{ST-MonoVO-SR}} & \multicolumn{2}{c}{\multirow{2}*{ORBSLAM2-SR}} \\
+    & \multicolumn{2}{c}{(from \cite{zhou2016reliable})} & \multicolumn{2}{c}{(from \cite{Geiger2011IV})}&   \multicolumn{2}{c}{(from \cite{Lee2015MoncularScale})}&\multicolumn{2}{c}{(from \cite{Song2015MoncularScale})}   & &\\
+        \cline{2-3}  \cline{4-5}  \cline{6-7} \cline{8-9} \cline{10-11} \cline{12-13}
+    & Trans & Rot  & Trans & Rot &Trans & Rot& Trans & Rot&Trans & Rot& Trans & Rot\\
+    & (\%) & (deg/m)  & (\%) & (deg/m)& (\%) & (deg/m) & (\%) & (deg/m)&(\%) & (deg/m) &(\%) & (deg/m)\\
+        \midrule
+        00&2.17&0.0039&2.32&0.0109&4.42&0.0150&2.04 &0.0048& 2.17&0.0053&\textbf{1.01}& \textbf{0.0014} \\
+        01&-&-&-&-&6.91&0.0140&- &&-&- &-&-  \\
+        02&-&-&2.01&0.0074&4.77&0.0168&1.50 &0.0035  &1.81&0.0041  &\textbf{0.93}&\textbf{0.0018}\\
+        03&2.70&0.0044&2.32&0.0107&8.49&0.0192&3.37&0.0021     &1.45&0.0035 &\textbf{0.52} &\textbf{0.0010}\\
+        04&-&-&\textbf{0.99}&0.0081&6.21&0.0069&1.43 &\textbf{0.0023} &2.21&0.0049 &1.16&\textbf{0.0023} \\
+        05&-&-&1.78&0.0098&5.44&0.0248&2.19 &0.0038     &1.51&0.0041 &\textbf{1.45}&\textbf{0.0014}\\
+        06&-&-&\textbf{1.17}&0.0072&6.51&0.0222&2.09 &0.0081 &2.91&0.0060 &2.92&\textbf{0.0027}\\
+        07&-&-&-&-&6.23&0.0292&- &-      &-&-& \textbf{1.73}&\textbf{0.0023}  \\
+        08 & - & - & 2.35 & 0.0104 & 8.23& 0.0243&2.37 & 0.0044  &2.34 &0.0035 &\textbf{1.18}&\textbf{0.0017}\\
+        09  & -& - & 2.36 & 0.0094 & 9.08& 0.0286&1.76 & 0.0047   &1.85&0.0032  &\textbf{1.17}&\textbf{0.0020}\\
+        10 & 2.09 & 0.0054 & 1.37 & 0.0086 & 9.11& 0.0322&2.12 & 0.0085   &1.83&0.0048 &\textbf{0.93}&\textbf{0.0029}\\
+        \midrule
+        % \textbf{Average.} & \textbf{84.0}\\
+        AVG & 2.32 & 0.045 & 2.02 & 0.0095& 6.86 &0.0212&2.03&0.0045  &2.01 &0.0049&\textbf{1.25}&\textbf{0.0020}\\
+        % \hline
+        \bottomrule
+        \end{tabular}}
+        \label{tab:kitti_compare}
+        \caption{与其他最先进的VO/SLAM算法的比较}
+\end{table}
+
+\subsection{算法不同模块效果分析}
+\label{sec:ablation}。
+开源代码包括离线版和在线版。离线版需要保存初始运动和特征点，然后运行比例恢复代码；在线版的代码与初始VO代码融合，同时运行。本章给出了各模块的消融研究，包括特征选择模块（基于深度和道路模型的一致性）和参数探索模块（中值滤波和RANSAC）。使用经过特征稀疏化的的MonoVO和ORB-SLAM2提供初始运动估计。
+\subsubsection{路面特征点选择测试实验}
+\label{sec:FilterNecessrity}
+\begin{figure}[t]
+%\setlength{\abovecaptionskip}{0cm}
+%\setlength{\belowcaptionskip}{-0cm}
+ \centering
+% \mysubfigure[]{0.44}{              %\label{fig:mvosr_method_dis_good}
+% \includegraphics[width=\textwidth,height=0.69\columnwidth]{figures/mvosr/method/feature_sample_dis_good.pdf}}
+% \label{FeaturesDistribution_a}
+\begin{subfigure}[b]{0.44\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/method/feature_sample_dis_good.pdf}
+\caption{10}
+\label{fig:FeaturesDistribution_a}
+\end{subfigure}  
+\begin{subfigure}[b]{0.44\textwidth}
+    \includegraphics[width=\textwidth]{figures/mvosr/method/feature_sample_dis_bad.pdf}
+\caption{10}
+\label{fig:FeaturesDistribution_b}
+\end{subfigure}  
+% \mysubfigure[]{0.44}{               %\label{fig:mvosr_method_dis_bad}
+% \includegraphics[width=\textwidth,height=0.69\columnwidth]{figures/mvosr/method/feature_sample_dis_bad.pdf}}
+\caption{算法1-3在两帧图像上测试结果} % (c) Frame 15.}
+%\vspace{-2\baselineskip}
+\label{fig:FeaturesDistribution}
+\end{figure}
+
+选取的道路点受到两个规则的约束：深度一致性和道路模型一致性。我们算法的性能如图\ref{fig:GlobalDistribution}和\ref{fig:FeaturesDistribution}所示，图\ref{fig:GlobalDistribution}中表示在KITTI数据集中序列00上第10帧与第20帧两帧图像上测试算法1-3的结果。红色折线表示经过两帧图像匹配后可能的路面特征点，绿色折线"Depth-Correct Features"表示经过算法1和算法2后的特征点分布，黄色折线"Selected Features"表示经过算法1-3后的特征点分布。
+
+表\ref{tab:depth_filter}-\ref{tab:feature_filter}所示，证明了本文提出的特征点选择算法确实可以有效地拒绝道路异常值，提高轨迹估计的精度。我们先在一些帧上进行定性测试，再在KITTI数据集的10个序列上进行定量测试。在此基础上，本文提出的轨迹估计算法确实能够有效地剔除道路异常值，以提高轨迹估计的精度。
+
+首先，我们用我们的特征选择方法对KITTI数据集序列00上的前500帧进行定性分析，并计算其在纵轴上的分布，如图\ref{fig:GlobalDistribution}所示，特征过滤后，靠近道路的点的比例增加。然后，选取个别帧来观察道路点选择的效果。我们比较KITTI序列00中第10帧（图\ref{fig:FeaturesDistribution}a）和第20帧（图\ref{fig:FeaturesDistribution}b）在道路点选择前后的特征分布。红色曲线是所有特征点的分布。特征点属于路面的概率在特征选择后变得突出。
+
+然后，选取KITTI序列00中的个别帧第10帧（图\ref{fig:FeaturesDistribution}a)和第20帧（图\ref{fig:FeaturesDistribution}b)，查看道路点选择前后的特征分布。可以看出，第20帧上的特征点数量较少，不足以计算道路模型。
+特征点选择后，道路点的百分比变得很突出。此外，我们将剩余的点用不同的颜色可视化，我们可以看到大部分被选择的点（用黄色标记）位于道路上。深度一致性选择后，在随机选择的帧上进行两次Delaunay三角测量的结果。
+图\ref{fig:outlier_selection}直观地显示了深度一致性选择(图\ref{fig:outlier_selection}a)和深度与道路模型一致性选择(图\ref{fig:outlier_selection}b)后，在随机选择的帧上进行两次Delaunay三角测量的结果。二维特征点集$(u_i,v_i)$被分割成一组三角形。
+一些由移动障碍物或不良特征跟踪产生的错误匹配特征被移除，如图\ref{fig:outlier_selection}所示。
+
+\begin{table}
+    \caption{采用同一种路面模型（RM）特征点筛选的情形下，加入直接踢除法（DD）或最大团模型（MC）特征点筛选对旋转矩阵$R$的影响。}
+    \setlength{\tabcolsep}{3.3mm}
+    \begin{center}
+    \begin{tabular}{lccccc} 
+    \toprule
+    \multirow{2}{*}{Seq}  &Rotation error & RM & RM+DD  &RM+MC \\
+    &(deg/m) &(\%) & (\%) & (\%)    \\
+    \midrule
+    \text{00} & 0.0053 & 2.87 & 2.25 & \textbf{2.17}  \\
+    \text{02} & 0.0041 & 2.03 & 1.87 & \textbf{1.81}  \\
+    \text{03}  & 0.0035 & 1.20 & \textbf{1.19} & 1.45  \\
+    \text{04} & 0.0049 & 2.08 & \textbf{1.77} & 2.21  \\
+    \text{05}  & 0.0041 & 2.97 & 1.81  & \textbf{1.51}  \\
+    \text{06}  & 0.0060 & 4.51 & 3.10  & \textbf{2.91}  \\
+    \text{07} & 0.0092 & 4.07 & 3.72  & \textbf{3.21}  \\
+    \text{08}  & 0.0035 & 3.28 & 2.47 & \textbf{2.34}  \\
+    \text{09}  & 0.0032 & 1.86 & 1.87  & \textbf{1.85}  \\
+    \text{10} & 0.0048 & 3.04 & 2.45  & \textbf{1.83}  \\
+    \midrule
+    \text{Average} & 0.0049 & 2.80 & 2.25  & \textbf{2.13}\\ 
+    \bottomrule
+    \end{tabular}
+    \end{center}
+    \label{tab:depth_filter}
+\end{table}
+
+
+其次，我们在KITTI数据集的序列00、02-10上量化了我们的路面特征点选择策略的性能。我们分别测试基于深度一致性（\ref{tab:depth_filter}）和模型一致性（\ref{tab:flat_filter}）的路面点选择，
+然后在表\ref{tab:feature_filter}中进行比较，实验重复十次，记录相对位移误差的平均百分比。旋转误差是由MonoVO算法获得的经过稀疏化的特征的RPE\cite{geiger2012we}。\%表示相对位移误差的百分比。
+
+为了评估基于深度一致性的路点选择的性能，我们用相同的道路模型一致性进行测试，如表\ref{tab:depth_filter}所示。我们可以得出结论，直接删除算法\ref{alg:depth_selection_1}和最大小团筛选
+算法\ref{alg:depth_selection_4}在道路异常值剔除中都能发挥作用，算法\ref{alg:depth_selection_4}在8个序列上的表现略优于算法\ref{alg:depth_selection_1}。
+
+为了评估基于道路模型一致性的道路点选择的性能（在\ref{sec:RoadNormal}中的算法\ref{alg:flat_selection}），我们设计了另一个类似的对比实验，结果显示在\ref{tab:flat_filter}中。使用相同的最大团深度一致性，MC-ROI显示了基于ROI的最大团深度一致性选择的性能。对于基于ROI的方法将一个固定的区域视为道路而不进行选择，其性能是最差的。第5列中的结果是将最大团和道路模型方法结合起来得到的，其性能优于仅有最大团一致性约束的性能（第4列）。
+我们还可以看到，使用直接删除后，道路模型一致性可以进一步拒绝更多的道路离群值，相对位移误差的比例从3.77\%下降到2.13\%。
+
+
+\begin{table}
+    \caption{采用同一种最大团模型（MC）特征点筛选的情形下，加入路面模型（RM）特征点筛选对旋转矩阵$R$的影响。MC-ROI是采用固定区域作为路面而未进行特种筛选的情形。}
+    \centering
+        \begin{tabular}{lccccc}
+        \toprule
+        \multirow{2}{*}{Seq} &Rotation error &MC-ROI &MC &MC+RM\\
+        &  (deg/m) & (\%) &  (\%)& (\%) \\
+        \midrule
+        \text{00}  & 0.0053  & 4.05 &4.09  & \textbf{2.17}  \\
+        \text{02}  & 0.0041& 4.08 &2.75  & \textbf{1.81}  \\
+        \text{03} & 0.0035 & 5.05&2.73   & \textbf{1.45}  \\
+        \text{04} & 0.0049 & 6.32 &\textbf{1.93}  & 2.21  \\
+        \text{05}  & 0.0041& 3.72 &3.73   & \textbf{1.51}  \\
+        \text{06} & 0.0060 & 2.99&3.71   & \textbf{2.91}  \\
+        \text{07} & 0.0092 & 3.67&5.61   & \textbf{3.21}  \\
+        \text{08}  & 0.0035 & 3.59&3.55  & \textbf{2.34}  \\
+        \text{09}  & 0.0032 & 4.25&4.54   & \textbf{1.85}  \\
+        \text{10} & 0.0048 & 1.97 &5.02   & \textbf{1.83}  \\
+        \midrule
+        \text{Average} & 0.0049 & 3.97  &3.77 & \textbf{2.13}\\ 
+        \bottomrule
+        \end{tabular}
+        \label{tab:flat_filter}
+\end{table}
+
+在对深度和道路模型一致性性能单独分析后，我们收集的结果如表\ref{tab:feature_filter}所示。我们可以看到，它们的组合性能（第6列）确实优于单个算法。算法\ref{alg:depth_selection_4}和\ref{alg:flat_selection}的组合比单独使用效果更好。
+我们还可以推断，道路模型一致性选择的效果比深度一致性选择的效果好，道路模型的约束性更强。这是有道理的，因为深度一致性约束的主要作用只是消除一些匹配错误的点，但道路模型一致性约束可以拒绝所有角度或高度与道路模型矛盾的分割三角形。
+
+\begin{table}
+    \caption{基于最大团模型（MC）特征点筛选和路面模型一致性（RM）特征点筛选下的不同旋转矩阵$R$的变化。}
+    \centering
+    \begin{tabular}{lcccccc}%{spreadtab}{{tabular}{cccccc}}
+    \toprule
+    \multirow{2}{*}{Seq}  &Rotation error &No selection & MC &RM  &MC+RM {}\\ {}
+    & (deg/m) & (\%) & (\%)&(\%) & (\%)    \\
+    \midrule
+    \text{00} & 0.0053 & 13.28  &4.09 & 2.87&  \textbf{2.17}  \\
+    \text{02}  & 0.0041 & 11.27  &2.75 & 2.03&  \textbf{1.81}  \\
+    \text{03} & 0.0035 & 7.070 &2.73 & \textbf{1.20}&  1.45 \\
+    \text{04} & 0.0049 & 9.200 &1.93 & \textbf{2.08}&  2.21  \\
+    \text{05}  & 0.0041 & 9.860 &3.73 & 2.97&  \textbf{1.51}  \\
+    \text{06}  & 0.0060 & 3.000 &3.71 & 4.51&  \textbf{2.91}  \\
+    \text{07} & 0.0092 & 12.30  &5.61 & 4.07&  \textbf{3.21}  \\
+    \text{08} & 0.0035 & 10.82  &3.55 & 3.28&  \textbf{2.34}  \\
+    \text{09}  & 0.0032 & 16.77  &4.54 & 1.86&  \textbf{1.85}  \\
+    \text{10} & 0.0048 & 10.50  &5.02 & 3.04&  \textbf{1.83}  \\
+    \midrule
+    \text{Average} & 0.0049 & 10.41  & 3.77  & 2.80 & \textbf{2.13} \\
+    \bottomrule
+    \end{tabular}
+    \label{tab:feature_filter}
+\end{table}
+
+\subsubsection{RANSAC与Median滤波参数性能比较}
+\label{sec:parameter_select}
+
+我们使用RANSAC方法计算几何道路模型，并使用中值滤波法去除尺度噪声，如\ref{sec:road_model}节所述。我们评估了不同的RANSAC（最大迭代）和过滤器参数（过滤器大小）下视觉里程测量的位移误差。我们用不同的RANSAC和过滤器参数评估视觉里程测量的位移误��，以决定最合适的参数。初始运动由ORB\-SLAM2提供。
+
+如果选择的特征点数量小于12个，我们跳过RANSAC步骤，保持道路几何模型与最后一帧验证的模型相同。为了确定最合适的RANSAC参数，我们设计了三个实验，结果如图所示\ref{fig:filter_method}。
+
+首先，我们在KITTI数据集的序列00上用10次不同的最大迭代和17个滤波器大小进行测试。我们对每一种情况运行10次，平均位移误差如图\ref{fig:filter_method}a所示。我们可以看到，虽然这十条线代表着不同的最大迭代次数，但在过滤器大小为6之前，它们都会急剧减少，然后随着过滤器大小的增加而变得稳定。
+
+所以我们暂时将滤波器大小设置为6，记录不同最大迭代下翻译误差的变化趋势，如图\ref{fig:filter_method}b所示。随着最大迭代次数的增加，性能不断提高，在15次之后变得稳定。考虑到计算成本和系统的鲁棒性，我们在实验中留有余地，将RANSAC的最大迭代次数设置为20次。
+
+滤波器的大小决定了考虑多少张之前的图像来获得尺度$s$的中值。同样，我们将RANSAC的最大迭代次数设置为20，并记录不同滤波器大小下的翻译误差方差，如图\ref{fig:filter_method}c所示。我们可以观察到，在一定的阈值下，随着滤波器大小的增加，更多的路面特征点异常值被去除。
+当滤波器大小达到6左右时，我们的方法实现了比较小的误差。这意味着所选取的特征点大多在道路平面上。但是，当超过一定的阈值后，过滤器尺寸过大，无法跟随尺度漂移，从而降低了尺度恢复方法的性能。最后，我们在实验中采用6作为最佳滤波大小。位移误差的平均值和中值分别约为1.0207\%和1.0008\%。此外，位移误差的标准误差约为0.0712\%。
+
+在确认了中值滤波的最佳滤波尺寸后，我们对KITTI数据集中带中值滤波的序列00上的尺度和轨迹进行了展示，如图所示，\ref{fig:filter_path}。我们可以观察到，在这个序列中，没有尺度滤波器的原始轨迹发生了严重的尺度漂移。然而，在中值滤波器的帮助下，大部分尺度噪声被去除，我们的尺度恢复方法估计的VO轨迹非常接近真实路线。
+
+
+\begin{figure}\centering
+    \vspace{4mm}
+    \begin{subfigure}[h]{0.8\textwidth}
+    \includegraphics[width=\textwidth]{mvosr/fig_filter/filter_all_ransac_all_crop.pdf}
+    \caption{}
+    \vspace{3mm}
+    \end{subfigure}
+    \begin{subfigure}[h]{0.8\textwidth}
+    \includegraphics[width=\textwidth]{mvosr/fig_ransac/errors_box_crop.pdf}
+    \caption{}
+    \vspace{3mm}
+    \end{subfigure}
+    \begin{subfigure}[h]{0.8\textwidth}
+    \includegraphics[width=\textwidth]{mvosr/fig_filter/median_box_crop.pdf}
+    \caption{}
+    \vspace{3mm}
+    \end{subfigure}
+    \caption{RANSAC和中指滤波不同参数下的旋转误差。(a)RANSAC最大迭代次数的影响。(b) 中值滤波不同滤波尺寸的影响。}
+    \label{fig:filter_method}
+\end{figure}
+    
+\begin{figure}\centering
+    \begin{subfigure}[h]{0.4\textwidth}
+    \includegraphics[width=\textwidth]{mvosr/fig_filter/scale_f1_crop.pdf}
+    \caption{}
+    \end{subfigure}
+    \vspace{2mm}
+    \begin{subfigure}[h]{0.4\textwidth}
+    \includegraphics[width=\textwidth]{mvosr/fig_filter/path_f1_crop.pdf}
+    \caption{}
+    \end{subfigure}
+    \begin{subfigure}[h]{0.39\textwidth}
+    \includegraphics[width=\textwidth]{mvosr/fig_filter/scale_f6_crop.pdf}
+    \caption{}
+    \end{subfigure}
+    \begin{subfigure}[h]{0.4\textwidth}
+    \includegraphics[width=\textwidth]{mvosr/fig_filter/path_f6_crop.pdf}
+    \caption{}
+    \end{subfigure}
+    \caption{值滤波加入前后尺度系数和轨迹比较。(a)加中值滤波前的尺度系数。(b)加中值滤波前的轨迹。(c)加中值滤波后的尺度系数。(d)加中值滤波后的轨迹。}
+    \label{fig:filter_path}
+\end{figure}
+
+\section{本章小结}
+\label{sec:Conclusion}。
+我们提出了一种以摄像机高度为绝对参考，基于道路几何约束的实时单目视觉里程计尺度恢复方法。我们的方法的新颖之处在于，道路特征点的选择和道路模型估计是迭代计算的——的估计道路几何模型被认为是选择道路点的反馈。考虑检测到的道路点，对几何道路模型进行在线更新。选取的路点用于估计道路模型，进而限制路点的选择。通过Delaunay三角测量法\cite{shewchuk1996triangle}将每一帧图像分割成一组三角形。通过考虑深度一致性和道路模型一致性，检查每个三角形是否属于道路区域。
+在道路点的选择上，我们用Delaunay三角测量法对点位进行分割，根据深度一致性和道路模型一致性选择道路点。
+因此，对于经过深度一致筛选的剩余三角形，我们将三角形区域的几何模型与前一帧的道路模型进行比较，只有在后续帧中法线$n_i$相似的三角形以及高度符合要求的才会被认证为路面特征点。摄像机运动$\mathbf{R}$和$\mathbf{bar{t}}$计算出的法线应该接近估计的道路法线$n_t$ 。
+
+对于经过验证的道路点，我们采用RANSAC来估计道路模型，并采用中值滤波器来去除尺度噪声。实验结果表明，我们的路面特征点选取策略能够有效地剔除道路异常值，RANSAC和中值滤波器的参数探索有助于提高系统的精度和鲁棒性。实验结果还表明，现有的开源VO或SLAM方法，包括ORB-SLAM2(有LC和无LC)、LibVISO和MonoVO，通过与我们的尺度恢复方法相结合，得到了显著的改进。将ORB-SLAM2(无LC)和MonoVO作为我们的初始自我运动估计，我们的方法在四种最先进的VO方法中取得了最好的性能。因此，通过简单的单相机校准和安装的相机高度测量，我们的方法可以帮助机器人在未探索的环境中进行精准的自我定位。
+
+在未来，我们计划探索与IMU等廉价传感器融合的绝对尺度估计，因为所有基于地面平面的视觉方法在地面平面被严重遮挡或不能作为平面消耗时都会失败。此外，考虑到我们基于点的算法在低纹理环境下可能会因为缺乏足够的特征而失效，我们也会关注更丰富的线或点线结合的特征。

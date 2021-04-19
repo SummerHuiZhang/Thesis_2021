@@ -1,0 +1,34 @@
+\newcolumntype{x}[1]{>{\centering\arraybackslash\hspace{0pt}}p{#1}}
+\begin{table*}[h]
+    \caption{尺度计算算法与其它算法的精度比较}
+    \begin{center}
+    \begin{tabular}{p{0.5cm} x{0.8cm} x{0.8cm} x{0.8cm} x{0.8cm} x{0.8cm} x{0.8cm} x{0.8cm} x{0.8cm} x{0.8cm} x{0.8cm} tabx{0.8cm}}
+    \toprule
+    % \hline     
+    \multirow{4}*{Seq} & \multicolumn{2}{c}{Zhou \textit{et al}.} & \multicolumn{2}{c}{Lee \textit{et al}.}& \multicolumn{2}{c}{Song \textit{et al}.} & \multicolumn{2}{c}{\multirow{2}*{MonoVO-I+Ours}} & \multicolumn{2}{c}{\multirow{2}*{ORB+Ours}} \\
+ & \multicolumn{2}{c}{(from \cite{zhou2016reliable})} &   \multicolumn{2}{c}{(from \cite{Lee2015MoncularScale})}&\multicolumn{2}{c}{(from \cite{Song2015MoncularScale})}   & &\\
+    %  % \hline%\hline
+    \cline{2-3}  \cline{4-5}  \cline{6-7} \cline{8-9} \cline{10-11} 
+ & Trans & Rot &Trans & Rot& Trans & Rot&Trans & Rot& Trans & Rot\\
+ & (\%) & (deg/m)  & (\%) & (deg/m)& (\%) & (deg/m) & (\%) & (deg/m)&(\%) & (deg/m)\\
+    \midrule
+    00&2.17&0.0039&4.42&0.0150&2.04 &0.0048& 2.17&0.0053&\textbf{1.01}& \textbf{0.0014} \\
+    01&-&-&6.91&0.0140&- &&-&- &-&-  \\
+    02&-&-&4.77&0.0168&1.50 &0.0035  &1.81&0.0041  &\textbf{0.93}&\textbf{0.0018}\\
+    03&2.70&0.0044&8.49&0.0192&3.37&0.0021     &1.45&0.0035 &\textbf{0.52} &\textbf{0.0010}\\
+    04&-&-&6.21&0.0069&1.43 &\textbf{0.0023} &2.21&0.0049 &\textbf{1.16}&\textbf{0.0023} \\
+    05&-&-&5.44&0.0248&2.19 &0.0038     &1.51&0.0041 &\textbf{1.45}&\textbf{0.0014}\\
+    06&-&-&6.51&0.0222&\textbf{2.09} &0.0081 &2.91&0.0060 &2.92&\textbf{0.0027}\\
+    07&-&-&6.23&0.0292&- &-      &-&-& \textbf{1.73}&\textbf{0.0023}  \\
+    08 & - & -  & 8.23& 0.0243&2.37 & 0.0044  &2.34 &0.0035 &\textbf{1.18}&\textbf{0.0017}\\
+    09  & -& -  & 9.08& 0.0286&1.76 & 0.0047   &1.85&0.0032  &\textbf{1.17}&\textbf{0.0020}\\
+    10 & 2.09 & 0.0054 & 9.11& 0.0322&2.12 & 0.0085   &1.83&0.0048 &\textbf{0.93}&\textbf{0.0029}\\
+    \midrule
+    % \textbf{AVE.} & \textbf{84.0}\\
+    AVE & 2.32 & 0.045 & 6.86 &0.0212&2.03&0.0045  &2.01 &0.0049&\textbf{1.25}&\textbf{0.0020}\\
+    % \hline
+    \bottomrule
+    \end{tabular}
+    \end{center}
+    \label{tab:kitti_compare}
+    \end{table*}

@@ -1,0 +1,52 @@
+\begin{table*}[!htbp]
+    \caption{尺度恢复算法与VISO-M和VISO-S对比}
+    \begin{center}
+    \begin{tabular}{c c c c c c c }
+    \toprule
+    % \hline
+    \multirow{4}*{Seq} & \multicolumn{2}{c}{VISO2-M} &\multicolumn{2}{c}{VISO2-S} &  \multicolumn{2}{c}{\multirow{2}*{Our Method }}\\
+                       & \multicolumn{2}{c}{(from \cite{Song2015MoncularScale})}  & \multicolumn{2}{c}{(from \cite{Song2015MoncularScale})}&\\
+    %  % \hline%\hline
+    \cline{2-3}  \cline{4-5}  \cline{6-7} 
+        & Trans & Rot  & Trans & Rot  & Trans & Rot \\ 
+        & (\%) & (deg/m)  & (\%) & (deg/m)  & (\%) & (deg/m)\\
+    \midrule
+        08&13.94&0.0203&2.35&0.0104&2.22&0.0017\\
+        09&4.04 &0.0143&2.36&0.0094&4.14&0.0019\\
+        10&25.20&0.0388&1.37&0.0086&1.80&0.0029\\
+    \midrule
+    % \textbf{Avg.} & \textbf{84.0}\\
+    Avg & 14.39 & 0.0245 &2.02 &0.0095 &2.68&0.0022\\
+    % \hline
+    \bottomrule
+    \end{tabular}
+    \end{center}
+    \label{tab:dmvo_kitti_compare_1}
+\end{table*}
+
+\begin{table*}[!htbp]
+    \caption{尺度恢复算法与其他尺度恢复算法对比}
+    \begin{center}
+    \begin{tabular}{c c c c c c c }
+    \toprule
+    % \hline
+    \multirow{4}*{Seq} & \multicolumn{2}{c}{p-CNN VO} &\multicolumn{2}{c}{Song et al} &  \multicolumn{2}{c}{\multirow{2}*{Our Method }}\\
+                       & \multicolumn{2}{c}{(from \cite{})}  & \multicolumn{2}{c}{(from \cite{Song2015MoncularScale})}&\\
+    %  % \hline%\hline3`41
+    \cline{2-3}  \cline{4-5}  \cline{6-7}
+        & Trans & Rot  & Trans & Rot  & Trans & Rot \\ 
+        & (\%) & (deg/m)  & (\%) & (deg/m)  & (\%) & (deg/m)\\
+    \midrule
+        08&7.60&0.0187&2.37&0.0044&2.22&0.0017\\
+        09&6.75&0.0252&1.76&0.0047&4.14&0.0019\\
+        10&21.23&0.0405&2.12&0.0085&1.80&0.0029\\
+    \midrule
+    % \textbf{Avg.} & \textbf{84.0}\\
+    Avg & 8.96&0.0235 &2.08 &0.0059 &2.68&0.0022\\
+    % \hline
+    \bottomrule
+    \end{tabular}
+    \end{center}
+    \label{tab:dmvo_kitti_compare_2}
+\end{table*}
+

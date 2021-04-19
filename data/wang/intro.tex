@@ -1,0 +1,197 @@
+\chapter{A}
+\label{ch:intro}
+Introduction: PR-survey SMC2018
+视觉位置识别在机器人应用领域引起了越来越多的关注，例如。 自动驾驶和家庭服务机器人。 这个紧迫的问题仍然没有完美的解决方案，因为现实世界中的地方的出现可以有各种各样的方式，如知觉混叠、逻辑变化和不同的观点。 近年来，大量的研究人员试图用大量的方法来更新最先进的工作，特别是深度学习的应用。 本文从“位置识别”的定义和该问题的挑战入手。 然后，对图像预处理、特征提取器、地图采集和匹配查询图像四个部分进行了详细的描述，并进行了充分的可信分析。 我们的重点是介绍和比较了几个在位置识别系统中使用的网络，如CycleGAN、StarGAN，以及它们如何提高图像预处理中的定位精度，并学习到了一些以前没有分析过的特征。
+
+位置识别是定义良好但相当具有挑战性的研究。 它在保存的地图中定位给定的查询图像，这是计算机视觉和机器人通信中的一个关键和难题。 首先，是什么地方？ 在动物研究中，O‘Keefe和Dostrovsky于1917年鉴定了大鼠海马中的位置细胞{o1971海马}。 他们初步观察了自由运动大鼠海马单元的行为，以支持海马功能理论，发现当大鼠在环境中的特定位置时，放置细胞会着火。 
+
+ 什么是地方识别对我们人类没有任何智能辅助工具，如电话？ 你可能得到了一个答案，喜欢‘我可以识别这个熟悉的地方，当我重新访问它‘。 是的，没错，你必须在那里之前。 那么，你如何定义“熟悉‘？’ 我记得有一些地标，比如‘麦克唐纳德’在拐角处，附近有一座桥。 我肯定有90%‘。 
+
+对于机器人来说，位置的定义可以从0维点到二维或三维区域不等，这取决于导航上下文\cite{2016visual}\cite{kuipers2000spatial}。 给定一个地方的图像，机器人应该决定这个图像是否是存储在他们的地图中的地方，如果是的话，在接受的错误中哪一个是最好的匹配。 如果每幅图像都有GPS信息和视觉里程表，就会成为定位问题。 
+
+从定义上，我们知道地方识别系统必须具备和必须做的一些基本事情。
+那么机器人视觉位置识别系统由什么组成呢？ 首先，图像预处理，视觉数据必须由机器人来理解，其中包括用GaNite\cite{latif2017addressing}、CycleGAN\cite{zhu2017unpair}进行图像传输等。 第二，特征提取，例如。 手工制作和学习。 然后，用拓扑或度量或拓扑度量方法映射投标。 最后但并非最不重要的是，搜索具有信念的最佳匹配图像并检索其位置信息。
+
+\subsection{机器人视觉位置识别中的挑战}地方识别系统的挑战性主要是由光照条件、颜色、天气和视野引起的，结构和动态元素。 实际上，这些变化通常同时出现。 有一些很好的工作来处理这些变化中的一个引用...但是很难修复它们，并抛出一个机器人来定位自己在实际环境中。
+分段{实际变化}
+毫无疑问，照明条件可以彻底改变一个地方的呈像外观。
+(图\ref{fig:dark_c}, \ref{fig:summer_night_h}  和 \ref{fig:summer_shadow_g}), 不同天气环境(\ref{fig:winter_snow_f} 和 图\ref{fig:winter_l} ), 移动物体 (图\ref{fig:winter_day_a中的汽车} 和 图\ref{fig:winter_l}),  季节变换(图\ref{fig:winter_snow_f} 和 图\ref{fig:summer_day_b}), 场景结构变化(图\ref{fig:structure1}，\ref{fig:structure2}，\ref{fig:structure3}，\ref{fig:structure4}) 等。
+
+%\begin{figure*}[H!]
+\begin{figure*}[!t]
+\centering
+\subfigure[]{\label{fig:winter_day_a}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/1.png}
+}
+\subfigure[]{\label{fig:summer_day_b}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/2.png}
+}
+\subfigure[]{\label{fig:dark_c}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/3.png}
+}
+\subfigure[]{\label{fig:summer_strong_light_d}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/4.png}
+}
+\subfigure[]{\label{fig:winter_strong_light_e}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/5.png}
+}
+\subfigure[]{\label{fig:winter_snow_f}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/6.png}
+}
+\subfigure[]{\label{fig:summer_shadow_g}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/7.png}
+}
+\subfigure[]{\label{fig:summer_night_h}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/8.png}
+}
+\subfigure[]{\label{fig:fall_yellow_i}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/9.png}
+}
+\subfigure[]{\label{fig:winter_morning_j}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/10.png}
+}
+\subfigure[]{\label{fig:winter_strong_light_k}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/11.png}
+}
+\subfigure[]{\label{fig:winter_l}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/12.png}
+}
+\caption{来自Oxford RobotCar数据集中的，同一地方产生剧烈变化的例子\cite{maddern20171}.}
+\label{fig:RealMatch}
+\end{figure*}
+
+
+\begin{figure*}[!t]
+\centering
+\subfigure[]{\label{fig:structure1}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/structure1.png}
+}
+\subfigure[]{\label{fig:structure2}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/structure2.png}
+}
+\subfigure[]{\label{fig:structure3}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/structure3.png}
+}
+\subfigure[]{\label{fig:structure4}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/structure4.png}
+}
+\caption{Oxford RobotCar数据集\cite{maddern20171} 环境随着时间的推移同一地点产生的结构变化的例子}
+\label{fig:RealMatch}
+\end{figure*}
+
+\subsubsection{视觉场景混淆}
+视觉场景混淆意味着相同但不能区分的观察。 FAB-MAP学习了场所外观的生成模型。
+
+\begin{figure*}[!t]
+\centering
+\subfigure[]{\label{fig:alising1}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/alising1.png}
+}
+\subfigure[]{\label{fig:alising2}
+\includegraphics[width=0.2\textwidth,height=0.3\columnwidth]{figures/SMC/alising2.png}
+}
+\caption{Norland数据集cite{milford2015sequence}中的感知偏差示例图。}
+\label{fig:alising}
+\end{figure*}
+
+\subsubsection{多种多样视角}
+
+\begin{figure*}[!t]
+\centering
+\subfigure[]{\label{fig:viewpoint1}
+\includegraphics[width=0.15\textwidth,height=0.32\columnwidth]{figures/SMC/viewpoint1.png}
+}
+\subfigure[]{\label{fig:viewpoint2}
+\includegraphics[width=0.15\textwidth,height=0.32\columnwidth]{figures/SMC/viewpoint2.png}
+}
+\subfigure[]{\label{fig:viewpoint3}
+\includegraphics[width=0.15\textwidth,height=0.32\columnwidth]{figures/SMC/viewpoint3.png}
+}
+\subfigure[]{\label{fig:viewpoint3}
+\includegraphics[width=0.15\textwidth,height=0.32\columnwidth]{figures/SMC/viewpoint4.jpeg}
+}
+\caption{来自\cite{Philbin08}的多种多样视角示例图。}
+\label{fig:alising}
+\end{figure*}
+视场的变化
+ 机器人定位还可以帮助构建地图、可视化同时定位和映射(SLAM)\cite{Cummins2011appearance}\cite{milford2012seqslam}\cite{Cummins2011Appearance}\cite{Naseer2015Robust}\cite{Davison2007MonoSLAM}\cite{Engel2014LSD}\cite{Choset2001Topological}\cite{Mur2017ORB}。
+
+ FAB-MAP：\cite{Cummins2008FAB}
+ FAB-MAP不仅可以对机器人进行定位，还可以对其地图进行扩充。
+
+
+ FAB-MAP2.0\cite{Cummins2011Appearance}
+ 外观-只有SLAM在大规模与FAB-MAP2.0：\cite{Cummins2011Appearance}
+ FAB-MAP3D：具有空间和视觉外观的拓扑映射：\cite{Paul2010FAB}
+
+\section{Image Preprocessing}
+\label{sec:preprocessing}
+\subsection{Image transfer}
+\subsubsection{季节转换：跨季节的视觉SLAM}
+The appearance change elimination can be framed as a domain transformation problem, from original domain $D_A$, the visual representations of a map, to target domain $D_B$, appearance changed query images. 
+
+外观变化消除可以框架为域转换问题，从原始域地图的视觉表示（$D_A$），到目标域图像（$D_B$）外观变化查询图像。
+
+GAN\cite{latif2017addressing}
+CycleGAN\cite{zhu2017unpaired}
+\subsection{Remove dynamic objects}
+
+ 从视觉数据中提取特征}
+\label{sec:extract}
+
+ 视觉特征提取是机器人位置识别的一个基本问题，其中采用的特征是确定定位性能的关键；因此，大量的计算机视觉文献集中在手工制作的特征上，以发现和描述从图像中提取的特征，如SURF\cite{bay2006Surf}、ORB\cite{rublee2011orb}、BRIEF\cite{calonder2010brief}、SIFT\cite{lowe1999object}、Harris\cite1988combined}。 SIFT\cite{lowe1999object}和HOG\cite{Dalal2005Histogram}。最近，非手工制作的特征能够通过深度卷积神经网络(DCNN)从数百万标记图像中自动学习鉴别特征，这在计算机视觉和机器学习社区的几乎所有重要任务中都取得了最先进的性能\cite{Radford2016Unsuperved}\cite{Chen20143D}\cite{Krizhevsky2012ImageNet}\cite{Simonyan2014Very}\cite{Szegedy2015Going}\cite{He2015Deep}。 一个典型的DCNN由许多卷积和池层组成，然后是完全连接的层\cite{Krizhevsky2012ImageNet}。根据图像分类，给出了最先进的手工制作特征和非手工制作特征的总体比较。
+
+对于手动提取特征，各种各样的最先进的算法被认为是\cite{anni2017handcraft}：局部三元模式、局部相位量化、完成的局部二进制模式、旋转不变共现局部二进制模式、旋转局部二进制模式图像、全局旋转不变多尺度共现局部二进制模式和其他几种算法。
+
+\subsubsection{局部特征}
+ORB:\cite{rublee2011orb}
+BRIEF:\cite{calonder2010brief}
+SIFT\cite{lowe1999object}
+
+\subsection{手动特征}
+HOG \cite{Dalal2005Histograms}
+例如，你可以识别一张集体照片中的所有面孔，而不可能识别其中的一些。 你可能只有一张脸，然后这变成本地。 在面部、鼻子、眼睛等都是局部特征。
+
+局部特征 （local features），是近来研究的一大热点。大家都了解全局特征（global features），就是。如果用户对整个图像的整体感兴趣，而不是前景本身感兴趣的话，全局特征用来描述总是比较合适的。但是无法分辨出前景和背景却是全局特征本身就有的劣势，特别是在我们关注的对象受到遮挡等影响的时候，全局特征很有可能就被破坏掉了。
+
+
+而所谓局部特征，顾名思义就是一些局部才会出现的特征，这个局部，就是指一些能够稳定出现并且具有良好的可区分性的一些点了。这样在物体不完全受到遮挡的情况下，一些局部特征依然稳定存在，以代表这个物体（甚至这幅图像），方便接下来的分析。我们可以看下面这个图，左边一列是完整图像，中间一列是一些角点（就是接下来我们要讲的局部特征），右边一列则是除去角点以外的线段。不知道你会不会也觉得你看中间一列的时候能更敏感地把他们想象成左边一列的原始物品呢？
+
+一方面，局部特征对姿态变化不太敏感，仍然恢复一些重要信息，甚至部分关键点被遮蔽或移动，可以实现图像检索的快速计算。
+一方面说，如果我们用这些稳定出现的点来代替整幅图像，可以大大降低图像原有携带的大量信息，起到减少计算量的作用。另一方面，当物体受到干扰时，一些冗余的信息（比如颜色变化平缓的部分和直线）即使被遮挡了，我们依然能够从未被遮挡的特征点上还原重要的信息。
+
+
+一方面说，如果我们用这些稳定出现的点来代替整幅图像，可以大大降低图像原有携带的大量信息，起到减少计算量的作用。另一方面，当物体受到干扰时，一些冗余的信息（比如颜色变化平缓的部分和直线）即使被遮挡了，我们依然能够从未被遮挡的特征点上还原重要的信息。
+
+
+\subsubsection{全局特征}
+ 非手工特征采用三种方法：基于卷积神经网络(CNN)的深度转移学习特征、主成分分析网络(PCAN)和紧凑的二进制描述符(CBD)\cite{nanni2017handcraft}。 
+
+ 在我们以前的工作中，我们还尝试用IPCA来减少特征维数\cite{zhang2017Dynamic}，我们的结果证明了33维深度特征可以在匹配矩阵中以高精度识别。
+
+
+\section{地图构建}
+\label{sec:map}
+
+地图可能是已知的（本地化），也可能是并行构建的。 词袋法是计算机视觉社区中广泛使用的基本数据表示方法\cite{Sivic2003Video}。 原始感官数据中检测到的相机特征被量化为词汇，产生视觉词。 然后从一组训练数据中对单词进行聚类，通常采用K-均值，我们可以将传入的视觉单词分类为其中之一。 FAB-MAP\cite{Cummins2008FAB}将世界建模为一组离散的位置，这些位置由外观词上的分布描述。 查询感官数据被转换为单词包表示，然后计算观察来自该位置分布的概率
+
+大多数现有的视觉定位方法分为两类：度量或拓扑。度量定位可以非常精确，但对于长序列可能会随时间漂移或失败，而拓扑定位可能更可靠，但只提供粗略的位置估计。 对于一个自主系统（例如移动机器人或自动驾驶车辆），它的任务是使用与它相连的单个摄像机的视觉信息来定位自己。
+
+地图$M = \{I_1, I_2, ..., I_n\}$是由n个视觉表示$I_i \in \mathbb{R}^m $,来构造的，其中$m$表示维度大小。 给定这样一个$M$的映射和$输入视觉图像$\hat{I}$表示，位置识别充当$p = f(M, \hat{I})$的函数，其中$p$表示$M$中的每个特征表示是${I}$的相同位置的可信度分布$\hat{I}$。
+
+外观变化消除可以框架为域转换问题，从地图的视觉表示（原始域$D_A$），到待定位图像的视觉表示(目标域$D_B$)。
+\begin{figure}[H]
+\centering
+%\figure[Data association graph illustration from \cite{Naseer2014Robust}]{\label{fig:flow1}
+\includegraphics[width=0.3\textwidth,height=0.5\columnwidth]{figures/SMC/Flow1.png}
+}
+\caption{Diverse Viewpoint examples that from \cite{Philbin08}. }
+\label{fig:flow}
+\end{figure}[H]
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.8\textwidth,height=0.4\columnwidth]{figures/SMC/Flow2.png}
+  \caption{Edge connections between matching nodes (white) and corresponding hidden nodes (red) in G. For two connected nodes, both the matching state and the hidden state from the first node can either reach the matching or the hidden state of the second node. Nodes are only connected horizontally in the same row of the corresponding similarity matrix or the following row. The edges and the corresponding notations of the edge sets are colored accordingly for better understanding of the connections \cite{Naseer2015Robust}}
+  \label{fig:flow2}
+\end{figure}

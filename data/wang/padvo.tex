@@ -1,0 +1,498 @@
+\chapter{基于区域一致性深度视觉里程计网络架构设计方法}
+\label{ch:padvo}
+在前文（第\ref{ch:homovo}章）中，基于单目视觉里程计网络输入到输出之间映射关系的群同态性而提出的同态性损失函数提升了映射学习算法的精度。本章工作将介绍一种基于单目视觉运动估计区域一致性的网络架构设计方法，以及其对运动估计的精度和泛化性的提升效果。
+
+%点名冗余的重要性
+什么是区域一致性？单目视觉里程计的核心问题为根据相邻图像的变化计算机器人的运动，但在计算过程中整幅图像的信息往往是冗余的。在传统方法中，基于特征点的运动估计方法可以仅使用五个特征点计算出机器人运动的本征矩阵 (Essential Matrix) 并进一步分解得到机器人的旋转运动和平移运动\cite{nister2004efficient}；不基于特征点的直接法也具备通过优化局部图像区域的光度误差计算机器人运动的能力\cite{engel2014lsd}。总之，从局部图像的变化进行运动估计在原理上存在可行性；同时，依据各个局部区域所计算出来的运动势必是一致的，因为这些运动均对应于机器人的实际运动（如图\ref{fig:pad_des}所示）。
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.95\columnwidth]{figures/padvo/pad_des.pdf}
+  \caption{区域一致示意图}
+%  \caption{\wsnote{font is too small}}
+  \label{fig:pad_des}
+\end{figure}
+本章工作首先定义依据各个子区域所计算出的运动必然一致这一性质为区域一致性，并基于区域一致性提出了一种新的视觉里程计网络架构。在具体实现上，该网络首先独立地根据每块图像子区域进行机器人运动计算，同时评估各个子区域所计算运动的可靠性，进而依据所估计的运动和可靠性综合计算出机器人的最终运动，网络架构如图\ref{fig:pad_problem}所示。这种架构设计方式存在两个优点：首先，因为不同场景的局部图像区域的相似性会高于整幅图片的相似性，使用图像区域作为运动估计的基本单位有潜力提升算法的泛化性，其次，该架构将运动估计拆解到多个局部区域进行，结合可靠性评估的最终运动估计会降低算法结果的不确定性。
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.95\columnwidth]{figures/padvo/problem.pdf}
+  \caption{区域一致模型网络架构图}
+%  \caption{\wsnote{font is too small}}
+  \label{fig:pad_problem}
+\end{figure}
+
+在区域一致性网格架构的研究和实现中，本章做出如下贡献:
+\begin{enumerate}
+    \item 本章提出了一种新的运动估计网络架构设计方法。局部图像区域被首次用作运动估计映射学习的基本单元，并通过融合的方式得到机器人运动。这种方法可以降低运动估计对全局图像颜色分布的依赖，能够在一定程度上提高算法在不同数据集上的泛化能力。
+    \item 针对图像子区域的可靠性差异，本章提出增加一个分支网络预测所估计运动的可靠性，使问题定义更加完备。同时本章利用区域运动可靠性计算相机运动可靠性，其可为失效判断和多传感器融合提供基础。
+    \item 本章所提出的算法在公开数据集上进行了验证，实验表明，该算法在一定程度上提高了基于学习的视觉里程计的精度和泛化性（本章算法的代码实现已经开源\footnote{https://github.com/TimingSpace/PADVO}）。
+\end{enumerate}
+
+
+% structure
+%
+本章结构安排如下：
+首先在第\ref{sec:padvo_approach}节介绍算法的数学原理和实现方式；然后在第\ref{sec:experiments}节，我们在KITTI数据集\cite{geiger2012kitti}和Robotcat数据集\cite{RobotCarDatasetIJRR}定性和定量地评价本章算法；
+最后在\ref{sec:conclusion}节总结本章工作。
+
+
+\section{区域一致性视觉里程计方法}
+\label{sec:padvo_approach}
+%\input{content/table_network_structure.tex}
+本节将依次介绍区域一致网络架构设计方法的数学基础、网络结构和训练细节。
+
+\subsection{区域一致性方法的数学基础}
+\subsubsection{区域一致性的数学定义}
+基于深度学习的端到端视觉里程计问题可定义为映射学习问题：
+映射的定义域为图像对$\{\mathbf{I}_t,\mathbf{I}_{t+1}\}$，
+（表示为 $\mathbf{I}_t^{t+1}$ )，映射值域为与图像对相对应的相机运动向量$\mathbf{\tau}_t^{t+1}$。
+\begin{equation}
+  \mathbf{\tau}_t^{t+1} = F(\mathbf{I}_t^{t+1}|\mathbf{\omega})
+\end{equation}
+其中，$F(\mathbf{I}_t^{t+1}|\mathbf{\omega})$表示网络模型，$\mathbf{\omega}$为模型中待学习的权重参数。
+用于训练网络的训练集可以表示为$\{\mathbf{I}_t^{t+1},\mathbf{\tau}_t^{t+1}\}\quad t=0,1,...,N$，监督学习模式下，可通过优化器最小化损失函数以获取模型参数：
+\begin{equation}
+  \mathbf{\omega} = \argmin_w \sum_{t=0}^N \|F(\mathbf{I}_t^{t+1}|\mathbf{\omega}) - \left(\mathbf{\tau}_t^{t+1}\right)\|
+\end{equation}
+
+上述方法直接将整幅图像所在的高维空间集合作为映射函数的定义域。假设输入图像的尺寸为$w\times h$，通道数为$c$，那么输入图像对$\mathbf{I}_m^n \in \mathbb{I}^{w\times h\times 2c}$，其中$\mathbb{I}$为0到255之间所有整数的集合。图像尺寸越大，$\mathbb{I}^{w\times h\times 2c}$集合所在的空间维度越高，而集合中全集的元素数量与集合维度呈指数映射关系，所以，当图像尺寸较大时，需要更多次更均匀的训练样本才能较好的拟合集合全集\cite{lynn2002principles}。然而，由于现有数据集样本数量的不足以及场景内抽样样本的各个维度的相互耦合，样本空间一般仅分布在集合全集中的一小部分，使不同数据集的分布相差较大，学习到的映射模型无法很好的直接迁移。综上，本章认为全集空间的过大以及其间接导致的不完全采样是视觉里程计映射学习泛化性较差的一个重要原因。
+
+既然整幅图像所在的全局空间过大，那是否可以将图像的局部区域作为视觉里程计映射学习的基本单元呢？答案是肯定的，观察发现，对于视觉里程计
+问题，相机的运动估计并不依赖于整幅完整的图片，前后帧组成的图像对中信息量足够重叠子区域也可以用来估计相机运动，且所估计的运动应该与使用完整图像估计的
+运动相同。如果存在整幅图像到运动估计的映射函数$F(\mathbf{I}_t^{t+1};\mathbf{\omega}) = \mathbf{\tau}_t^{t+1}$，那么每个图像子区域都存在一个到某一相同运动的映射函数$^pF(^p\mathbf{I}_t^{t+1};^p\mathbf{\omega})$，即
+\begin{equation}
+  ^pF(^p\mathbf{I}_t^{t+1};^p\mathbf{\omega}) = \mathbf{\tau}_t^{t+1} \, p=0,1,2,...,N_p-1,
+  \label{eq:patch_mapping}
+\end{equation}
+其中$^p\mathbf{I}_t^{t+1}$为图像对${\mathbf{I}}_t^{t+1}$中的一块子区域。
+$N_p$ 为子区域的数量，子区域之间可以相互重叠。上述公式显然成立，因为不同子区域反应的运动均为相机的实际运动，本章定义图像对不同子区域必然映射到相同运动的这一性质为\textbf{区域一致性}。使用图像子区域进行运动估计可以有效降低映射学习中定义域所在的空间维度以及定义域样本全集的总量，进而提升训练集在全集中的分布比，理论上可以达到较好的泛化性。
+在本章所提出算法中，根据视觉里程计的数学计算原理，本章使用相同的映射模型去学习不同图像子区域到相机运动的映射，同时为了降低算法的复杂度和参数量，各个子区域的模型共享参数，于是区域一致性可以重新数学描述为：
+\begin{quote}
+  对任意图像对$\mathbf{I}_t^{t+1}$，若存在图像对到相机运动的映射函数$F$使$F(\mathbf{I}_t^{t+1};\mathbf{\omega})=\mathbf{\tau}_t^{t+1}$，则必然存在从图相对子区域到相机运动的映射函数$F_{pa}$，可以将图像中的任意子区域$^p\mathbf{I}_t^{t+1}$映射到相同的相机运动，即
+\begin{equation}
+  F_{pa}(^p\mathbf{I}_t^{t+1};\mathbf{\omega}_{pa}) = \mathbf{\tau}_t^{t+1} \quad \forall\  ^p\mathbf{I}_t^{t+1} \subset \mathbf{I}_t^{t+1} 
+  \label{eq:patch_mapping_2}
+\end{equation}
+\end{quote}
+
+在依据每个子区域估计出相机运动之后，可以使用所有运动的平均值求取机器人的最终运动：
+
+\begin{equation}
+    F(\mathbf{I}_t^{t+1}) = \sum_{p=0}^{N_p-1}\frac{^p\mathbf{\tau}_t^{t+1}}{N_p}
+\end{equation}
+根据方差法则可知，如果每个子区域的估计方差为$\sigma^2$，那么最终运动估计的方差为
+\begin{equation}
+    \sigma^2 \left(F(\mathbf{I}_t^{t+1})\right) = \frac{\sigma^2}{N_p}
+    \label{eq:pad_var_1}
+\end{equation}
+即用区域一致性的估计方法降低运动估计的不确定性。
+由于并没有考虑各个子区域可靠性的差异性，本章将这种模式定义为均一区域一致性(PADVO without Reliability)，将在实验章节进行评测 \ref{sec:experiments}。
+
+\subsubsection{区域的可靠性估计和差异性表征}
+然而直接在子区域空间上进行映射学习存在两个问题：1）因为视觉里程计的计算依赖于每个区域的像素位置，故虽然不同图像区域均可以用来计算相机运动，但每个区域所处的图像位置需要予以不同考虑；2）并不是所有的图像区域都具备可以估计出相机运动的足够信息，无信息或少信息区域（如图\ref{fig:pad_featureless}中所示的蓝天区域和无特征的路面区域）到机器人运动之间的映射存在歧义性。
+针对第一个问题，本章通过在图像对的通道维度上增加了坐标层让网络可以感知图像的不同位置，下文将主要介绍第二个问题的解决方案。
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.9\columnwidth]{figures/padvo/featureless.png}
+  \caption{特征较少区域示意图}
+  \label{fig:pad_featureless}
+\end{figure}
+
+为了解决不同子区域的可靠性差异问题，需要赋予各个子区域所估计出来运动的一个相应的方差，于是基于学习的运动估计问题重新数学描述为
+
+\begin{equation}
+    ^p\mathbf{\tau}_t^{t+1}=F_{pa}(^p\mathbf{I}_t^{t+1}|\mathbf{\omega}) \in N( \mathbf{\tau}_t^{t+1},\  ^p\mathbf{\sigma}^2) \quad p=0,1,..,N_p-1
+\end{equation}
+其中 $^p\mathbf{\sigma}^2$ 表示子区域估计运动的方差。即网络在使用每个子区域估计相机运动的同时，也估计出所估计运动的可靠性，
+然后通过子区域运动的加权平均获取相机的最终估计运动$\mathbf{\tau}_t^{t+1}$，对应方差越大的子区域所估计的运动，权重越小：
+\begin{equation}
+    \mathbf{\tau}_t^{t+1} = F(\mathbf{I}_t^{t+1}) = \frac{\sum_{p=0}^{N_p-1}\tfrac{1}{^p\mathbf{\sigma}^2}{^p\mathbf{\tau}_t^{t+1}}}{\sum_{p=0}^{N_p-1}\tfrac{1}{^p\mathbf{\sigma}^2}}
+    \label{eq:ego_mean}
+\end{equation}
+最终运动的估计方差为
+\begin{equation}
+    \sigma \left(F(\mathbf{I}_t^{t+1})\right) =  \frac{1}{\sum_{p=0}^{N_p-1}\frac{1}{^p\mathbf{\sigma}^2}}
+    \label{eq:pad_var}
+\end{equation}
+
+然而由于所使用表征旋转运动的角轴（李代数$\mathbf{\tau} \in \textit{se}(3)$ ），\textit{se}(3)并非欧式空间，其二元运算被定义为
+\begin{equation}
+  \label{eq:lie}
+  \ln(\exp(\mathbf{\tau}_1)\exp(\mathbf{\tau}_2)) = \mathbf{\tau}_1+\mathbf{\tau}_2 +[\mathbf{\tau}_1,\mathbf{\tau}_2]+\dots
+\end{equation}
+其中$[\,\cdot \,]$为李括号\cite{bourbaki2003elements}。
+理论上并不能直接使用
+公式\eqref{eq:ego_mean}进行加权平均
+但由于每一个区域估计出的运动差异较小，所以$[\mathbf{\tau}_1,\mathbf{\tau}_2]\approx 0$，其之后的其它项同样接近于0。
+于是
+\begin{equation}
+    \label{eq:lie_approx}
+    ln(\exp(\mathbf{\tau}_1)\exp(\mathbf{\tau}_2)) \approx \mathbf{\tau}_1+\mathbf{\tau}_2 
+\end{equation}
+所以本章依然直接使用公式\eqref{eq:ego_mean} 运动的加权平均以降低运算量。
+
+从公式\eqref{eq:pad_var}和公式\eqref{eq:pad_var_1}中可以看出，加权平均之后的方差会比之前的方差变小，这也是区域一致性视觉里程计有效性的数学依据，
+但方差变小的前提是可以对各个子区域的方差进行准确的估计，那么如何估计子区域的方差呢？
+本文提出同时使用网络估计运动的均值和方差，网络架构与损失函数将在下一章说明。
+
+
+
+\subsection{区域一致性网络架构和损失函数}
+\label{sec:padvo_stru_loss}
+\input{data/tables/padvo_network_structure.tex}
+网络架构设计灵感来源于YOLO\cite{redmon2016you}，YOLO是一种高速物体检测方法，其将输入图像分散成多个区域同时输入给模型以获取更快的物体识别速率。
+本文同样将输入图像分为多个子区域，对于每一个子区域，网络同时估计相机运动和运动的可靠性。网络从架构上分为两个子模块：运动估计网络$F_{pa}(^p\mathbf{I}_t^{t+1}|\mathbf{\omega}_{pa})$用来估计相机运动；可靠性估计网络$F_{re}(^p\mathbf{I}_t^{t+1}|\mathbf{\omega}_{re})$
+用来估计相机运动的方差，网络架构如图\ref{fig:structure}所示。 在模型细节上，两个模型都只含有卷积层，核函数尺寸$k$，特征层数量$n$,以及
+跳跃宽度（Stride）$s$，描述于表 \ref{tab:network_structure}。每个卷积层都跟随着一个组标准化（Group Normalization）层
+和一个修正线性单元层（Rectified Linear Unit，ReLU。此外，运动估计网络和可靠性估计网络在前五层共享参数。
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.9\columnwidth]{figures/padvo/structure.pdf}
+  \caption{区域一致模型网络细节图}
+  \label{fig:structure}
+\end{figure}
+
+从网络架构中可以看出，本文其实并没有显式地将图像分成多个区域，而是通过最后一层的感受野隐式的限定了每一个运动估计所取用的输入图像区域，区域之间存在相互
+重叠覆盖。当前的网络架构隐式地将输入图像分割为$\frac{w}{16}\times\frac{h}{16}$个子区域，每个子区域的大小为$87\times87$。其中$w$和$h$
+为属于图像对的宽度和高度。
+
+在网络得到估计运动以及运动可靠性之后，损失函数最朴素的构建方式为
+\begin{equation}
+    \mathbf{L} = \sum_t \sum_p {F_{re}\left(^p\mathbf{I}_t^{t+1}\right)}\|F_{pa}\left(^p\mathbf{I}_t^{t+1}\right)-\mathbf{\underline{\tau}}_t^{t+1}\|_2
+\end{equation}
+其中根据每个子区域的可靠性，给每个所估计的运动的误差赋予不同的权重，可靠性越高，对应的误差权重就越大，因为系统更应具备让可靠性更高的
+区域估计出更准的运动的能力；而对于可靠性不高的区域则给予较小的误差权重，因为对于根本不包含太多信息的图像区域（比如蓝天）网络是无法进行运动估计的，强制要求其学到准确的
+运动只会适得其反。
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.9\columnwidth]{figures/padvo/regularization.pdf}
+  \caption{正则化示意图}
+  \label{fig:regularization}
+\end{figure}
+
+但如果仅用上述公式作为损失函数训练网络，系统则倾向于不断降低所有区域的可靠性，这样损失函数同样会变小。如图\ref{fig:regularization}所示，图中可视化了当估计运动与真实运动的误差为固定值时，不同的可靠性指数对整体误差的影响，当不加正则化时，可靠性越小，系统误差越小。所以需要对可靠性进行正则化
+\begin{equation}
+  \mathbf{L} = \sum_t \sum_p  {^pL_t}
+\end{equation}
+\begin{equation}
+    ^pL_t = \exp(a)\|d\|_2+ \lambda\|a\|_2
+\end{equation}
+其中$d =|F_{pa}\left(^p\mathbf{I}_t^{t+1}\right)-_g\mathbf{\tau}_t^{t+1}\|_2 $ 为运动误差， $a = F_{re}\left(^p\mathbf{I}_t^{t+1}\right)$为可靠性网络的输出。$^p\mathbf{l}_t$ 相对于 $a$ 的偏导为：
+\begin{equation}
+   \frac{ \partial ^pL_t}{\partial a}= \exp(a)\|d\|_2 + 2\lambda a.
+   \label{eq:pad_loss}
+\end{equation}
+给定特定的误差，网络收敛时
+\begin{equation}
+    -2\lambda a \exp(-a) = \|d\|_2
+    \label{eq:var_by_reli}
+\end{equation}
+所以使用 $-2\lambda a \exp(-a)$ 作为所估计运动的方差。
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.9\columnwidth]{figures/padvo/reliability.pdf}
+  \caption{可靠性与运动误差关系示意图}
+  \label{fig:reliability}
+\end{figure}
+%\subsection{证明收敛}
+\subsection{区域一致性网络训练与推断}
+本章使用Python程序设计语言实现了所提出的基于区域一致性的网络模型，主要基于PyTorch深度学习框架。为了降低运算量，训练时KITTI数据集压缩至$640\times180$，RobotCar数据集压缩至$450\times180$（由于模型不涉及到全连接层，本文算法支持不同维度的图像输入）；运动使用角轴表示$\textit{se}(3)$
+使用Adam优化器优化公式\eqref{eq:pad_loss}所描述的损失函数，其中$\lambda$ 设置为 0.1，学习率设置为0.01，批大小设置为60。
+
+推断时，子区域估计出的的相机运动 $^p\mathbf{\tau}$ 和可靠性 $^pa$ 由训练好的网络模型 $F$ 和 $F_a$计算得到
+然后使用公式\eqref{eq:ego_mean}计算相机运动，计算时根据每一个子区域的可靠性$^pa$计算方差：
+\begin{equation}
+  ^p\sigma^2= -2\lambda (^pa) \exp(-(^pa)) 
+\end{equation}
+
+
+
+\begin{algorithm}
+  \caption{区域一致性视觉里程计算法框架}
+  \KwIn{训练集$\{\mathbf{I}^t,\mathbf{P}_t\} \quad t= 0,1,...,N$；测试图像序列$\mathbf{I}^{i'}\quad i = 0,1,...,M$}
+  \KwOut{测试图像对应的位姿$\mathbf{P}_i^{'} \quad i = 0,1,...,M$}
+  训练阶段：\\
+  构建图像对$\{\mathbf{I}_t^{t+1}\}$，同时计算相机运动$\mathbf{\tau}_t^{t+1} = \log(\mathbf{P}_t^{-1}\mathbf{P}_{t+1})$\\
+  得到用于训练模型的输入输出组合$\Omega_{\{\mathbf{I}_t^{t+1},\mathbf{\tau}_t^{t+1}\}}=\{\mathbf{I}_t^{t+1},\mathbf{\tau}_t^{t+1}\}\quad t=0,1,...,N$\\
+
+  \While{$\text{epoch}<100$}
+  {   
+      \For {$\forall \{\mathbf{I}_t^{t+1},\mathbf{\tau}_t^{t+1}\} \in \Omega_{\{\mathbf{I}_t^{t+1},\mathbf{\tau}_t^{t+1}\}}$}
+      {
+        Loss $L = 0$\\
+        \For{$\forall\; ^p\mathbf{I}_t^{t+1} \subset \mathbf{I}_t^{t+1}$}
+        {
+          $^p\mathbf{\tau} =F_{pa}(\mathbf{I}_t^{t+1};\mathbf{\omega}_{pa})$ \\
+          $^pa =F_{re}(\mathbf{I}_t^{t+1};\mathbf{\omega}_{re})$ \\
+          $L = L + \exp(a)\|d\|_2+ \lambda\|a\|_2$ \\
+
+        }
+      }
+      $\mathbf{\omega}_{pa} = \mathbf{\omega}_{pa} - \delta \frac{\partial L}{\partial \mathbf{\omega}_{pa}}$\\
+      $\mathbf{\omega}_{re} = \mathbf{\omega}_{re} - \delta \frac{\partial L}{\partial \mathbf{\omega}_{re}}$\\
+  }
+  测试阶段：\\
+  $\mathbf{P}_0^{'} = E$
+  \For {$i \in (1,M)$}
+  {
+    $\mathbf{I}_{i-1}^{i} = \{\mathbf{I}_{i-1},\mathbf{I}_{i}\}$\\
+    \For{$\forall\; ^p\mathbf{I}_i^{i+1} \subset \mathbf{I}_i^{i+1}$}
+    {
+      $^p\mathbf{\tau} =F_{pa}(\mathbf{I}_{i-1}^{i};\mathbf{\omega}_{pa})$ \\
+      $^pa =F_{re}(\mathbf{I}_{i-1}^{i};\mathbf{\omega}_{re})$ \\
+      $ ^p\sigma^2= -2\lambda ^pa \exp(-^pa)$\\
+    }
+    根据公式\eqref{eq:ego_mean}计算$\mathbf{\tau}_{i-1}^{i}$\\
+    $\mathbf{P}_i^{'} =\mathbf{P}_{i-1}^{'}\exp(\mathbf{\tau}_{i-1}^{i})$
+  }
+  得到 $\mathbf{P}_i^{'} \quad i = 0,1,...,M$
+\label{alg:padvo}
+\end{algorithm}
+
+
+%\subsection{自监督训练}
+%所提出方法的核心思想为运动估计网络以图像区域为基本单位，每块区域分别输出所估计的运动，以及运动的可靠性。将本文提出的运动估计网络融入到自监督训练框架中存在一个问题，就是我们没有相机运动真实值，通过重投影误差同时约束深度估计和运动估计。区域一致思想的融入有两种方案：1）针对每一个区域所估计出的运动均计算重投影误差; 2）评估运动估计的离散程度作为损失函数，因为区域一致思想的本质为各个子区域所估计的运动一致。
+
+
+\section{区域一致性网络架构验证实验}
+\label{sec:experiments}
+
+%\input{content/table_pad_compare.tex}
+本节设计了四个实验用以证明本文所提出方法的有效性，实验在KITTI视觉里程计数据集\cite{geiger2012kitti}和RobotCar数据集 \cite{RobotCarDatasetIJRR}进行开展。算法效果使用平均姿态误差（Relative Pose Error，RPE）\cite{geiger2012kitti}进行评估。首先在第\ref{sec:es_pad_check}节进行消冗实验，验证区域一致模型对算法性能的提升；然后在第\ref{sec:pad_es_relia}节评测可靠性估计的准确性；在第\ref{sec:pad_es_compare}节与其它视觉里程计算法进行效果对比用以验证整体算法是否有效；最后，第\ref{sec:pad_es_visu}节对神经网络中间的特征层进行了可视化，用以观察网络模型的学习细节。
+
+\begin{figure}[t]
+
+  \centering
+  \begin{subfigure}[b]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{figures/padvo/kitti_pose_06.pdf}
+    \caption{KITTI 06}
+    \label{fig:model_test_kitti_06}
+  \end{subfigure}
+  \vspace*{2mm}
+  \begin{subfigure}[b]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{figures/padvo/kitti_pose_08.pdf}
+    \caption{KITTI 08}
+    \label{fig:model_test_kitti_08}
+  \end{subfigure}
+  \vspace*{2mm}
+  \begin{subfigure}[b]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{figures/padvo/kitti_pose_10.pdf}
+    \caption{KITTI 10}
+    \label{fig:model_test_kitti_10}
+  \end{subfigure}
+  \begin{subfigure}[b]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{figures/padvo/robocar_1511_02_remap_pose.pdf}
+    \caption{RobotCar}
+    \label{fig:model_test_RobotCar}
+  \end{subfigure}
+
+  \caption{不同模型测试效果图}
+  {\label{fig:model_test}}
+  \end{figure}
+
+
+
+\subsection{区域一致性有效性验证实验}
+\label{sec:es_pad_check}
+本节将通过对比实验验证本文所提出的区域一致性对基于学习的视觉里程计算法的提升。在实验中，本节将对比如下三个不同模型的测试效果：
+\begin{enumerate}
+  \item 非区域一致模型（记为 Non-PAD ）:与本章所提出的运动估计模型架构基本一致，但不考虑区域一致性，使用全局均值池化 (Global Average Pooling)对各个区域的运动估计直接进行平均池化并作为输出结果（与Zhou 等人\cite{zhou2017unsupervised}相似）；
+  \item 带坐标层的非区域一致模型（记为 Non-PAD with Coor）:此模型同非区域一致模型，但输入层增加图像坐标层；
+  \item 均一区域一致模型（记为 PAD without Reli）:运动模型使用所提出的区域一致模型，但不估计每个子区域的可靠性，在网络训练学习过程中使用相同的区域可靠性计算损失函数；
+\end{enumerate}
+
+以上三种模型使用相同的训练数据、优化方法、学习率以及批处理大小等超参，分别在不同KITTI和RobotCar数据集上进行两组训练和六组测试。
+
+首先，在KITTI数据集00（记为KITTI-00）序列上分别训练上述三个模型，然后分别在KITTI-06，KITTI-08和KITTI-10进行测试，测试轨迹分别可视化于图 \ref{fig:model_test_kitti_06}、\ref{fig:model_test_kitti_08}和\ref{fig:model_test_kitti_10}中。
+然后，同样在RobotCar的一个数据集上进行训练（记为RobotCar-00），并在RobotCar中不同的数据（记为RobotCar-01）上进行测试，测试轨迹可视化如图\ref{fig:model_test_RobotCar}所示。从图中可以看出，使用区域一致模型训练得到的轨迹比使用其它模型得到的结果更接近真实轨迹。
+
+但测试轨迹与真实轨迹的相似性只能定性评价模型的测试性能，为了得到更明确的结果，本节使用RPE评价指标定量地评价了每条轨迹的测试误差，并记录于表\ref{tab:pad_model_compare}和表\ref{tab:pad_model_compare_2}中，其中表\ref{tab:pad_model_compare}记录了KITTI-00中的训练模型的三组测试实验，表\ref{tab:pad_model_compare_2}中记录了RobotCar-01中的训练模型的一组测试实验和RobotCar数据集与KITTI数据集的交差验证实验。
+\input{data/tables/padvo_pad_compare.tex}
+从表\ref{tab:pad_model_compare}的实验数据中可以发现均一区域一致模型（PAD wo Reli）相比于其它两个非区域一致模型的测试误差有着显著地下降：区域一致模型相比于不带坐标层的
+非区域一致模型，在KITTI数据集上平均相对位置误差从25.85\%降到了16.35\%左右，提升了9.5\%，相比于带坐标层的非区域一致模型也提高了5.3\%；此外均一区域一致模型在三组测试集中平均相对姿态误差相比于非区域一致模型从0.1382deg/m和0.1029deg/m降到了0.05deg/m。
+
+从表\ref{tab:pad_model_compare_2}的实验数据中可以看出区域一致模型提升了算法跨数据集泛化性：在RobotCar-01上训练的均一区域一致模型在KITTI-10上的相对位置误差下降超过10\%，相对姿态误差下降了0.05deg/m；在KITTI-00上训练的均一区域一致模型相比于非区域一致模型也取得了大幅提升。
+
+综上，对比实验的测试数据中说明均一区域一致模型可以提升映射学习的精度和泛化能力。
+
+
+\subsection{可靠性估计有效性验证实验}
+\label{sec:pad_es_relia}
+\input{data/tables/padvo_reliability_compare.tex}
+本节分别从定性和定量两个角度对区域可靠性和帧可靠性的有效性进行验证。
+\subsubsection{区域可靠性验证实验}
+
+本节通过区域可靠性估计对运动估计效果的影响来定量评价区域可靠性的有效性。我们训练带可靠性估计的区域一致模型，并使用第\ref{sec:es_pad_check}节中的无可靠性区域一致模型作为对照组，控制其它条件一致，对运动估计结果进行评价，定量结果记录于表\ref{tab:padvo_reli_compare_1}和表\ref{tab:padvo_reli_compare_2}中。在表中的六组对比实验中有四组实验带可靠性的区域一致模型优于不带可靠性估计的区域一致模型。
+
+但发现可靠性估计网络仅提升了平移运动估计的精度，但对旋转运动估计并没有明显提升，甚至略有下降。
+本节分析这种现象的一个可能原因为：KITTI数据集和RobotCar数据集为使用车辆采集的数据，以前后平移运动为主，大部分数据中车辆并没有旋转运动，导致可靠性估计网络所估计的可靠性以平移运动为主，所以其对平移运动有一定提升，但对旋转运动没有效果。
+\begin{figure}[h]
+  \centering
+  \mysubfigure[]{0.45}{
+  \includegraphics[width=\textwidth, trim={0 0 5cm 0},clip]{padvo/relia_1.png}
+  }{\label{fig:reli_1}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.45}{
+  \includegraphics[width=\textwidth, trim={0 0 5cm 0},clip]{padvo/relia_2.png}
+  }{\label{fig:reli_2}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.45}{
+  \includegraphics[width=\textwidth, trim={0 0 5cm 0},clip]{padvo/relia_3.png}
+  }{\label{fig:reli_3}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.45}{
+  \includegraphics[width=\textwidth, trim={0 0 5cm 0},clip]{padvo/relia_4.png}
+  }{\label{fig:reli_4}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.45}{
+  \includegraphics[width=\textwidth, trim={0 0 5cm 0},clip]{padvo/relia_5.png}
+  }{\label{fig:reli_5}}
+  \mysubfigure[]{0.45}{
+  \includegraphics[width=\textwidth, trim={0 0 5cm 0},clip]{padvo/relia_6.png}
+  }{\label{fig:reli_6}}
+  \caption{区域可靠性效果图}
+  \label{fig:pad_pad_reli}
+  \end{figure}
+本节定性的可视化了区域估计方差与区域实际误差（如图\ref{fig:pad_pad_reli}所示)，从图\ref{fig:pad_pad_reli}中可以看出二者的相关性。
+
+\subsubsection{帧可靠性验证实验}
+本节定义帧可靠性有效性的评价原则为：有效的可靠性估计值应该与运动估计的实际误差负相关，即根据可靠性所计算出的运动方差估计值（公式\eqref{eq:var_by_reli}））与运动估计的实际误差正相关。于是，我们将运动方差估计值和运动误差实际值的相关性作为可靠性的有效性指标，相关性越高，则可靠性估计的有效性越高。相关性评价存在很多种定量评价方式，包括皮尔森相关性指数（Pearson Correlation）、斯皮尔曼相关性指数（Spearman Correlation）、互信息（Mutual Information，MI）和KL散度（KL Divergence）等。
+其中互信息和KL散度用于评价两个概率分布模型之间的差异，而本文需要评价的为数值差异，所以旋转用于数值评价的皮尔森指数和斯皮尔曼指数。皮尔森指数相比于斯皮尔曼指数对数据的数值差异更敏感，于是本文采用皮尔森指数来评价运动方差估计值和运动误差实际值之间的相关性。
+\begin{equation}
+  \label{eq:re}
+  \mathbf{m} = \rho\left({\|\mathbf{e}\|_2},{-\mathbf{r}\exp(-\mathbf{r})}\right)
+\end{equation}
+\begin{equation}
+  \rho(X,Y) =\text{corr}(X,Y)= \frac{\text{cov}(X,Y)}{\sigma(X)\sigma(Y)}
+\end{equation}
+
+其中，$\mathbf{e} \in R^{n}$ 为每一帧所估计的运动与真实运动比较的误差；
+ $\mathbf{r} \in R^{n}$为所估计的运动的可靠性，
+$n$为图像的数量。从第
+\ref{sec:padvo_stru_loss}节可知，$-\mathbf{r}\exp(-\mathbf{r})$为所估计的运动方差。
+\input{data/tables/padvo_reliability.tex}
+由于本文是首次提出映射学习中帧可靠性的数值量化，所以无法与其它工作进行定量比较，为更加直观的理解定量评价结果的数值，我们评价如下情况的皮尔森指数，并记录于表\ref{tab:frame_reliability}：
+\begin{enumerate}
+  \item 当根据所估计的方差计算的误差等于真实误差，此时可靠性完美，皮尔森指数为1；
+  \item 当将方差赋予随机值，评价估计误差与真实误差的皮尔森指数；
+  \item 当将方差赋予相同值，评价估计误差与真实误差的皮尔森指数，其值应为0；
+  \item 评价真实估计的方差与真实误差的皮尔森指数。
+\end{enumerate}
+
+表中00-08为训练集，09、10和RobotCar为测试集。
+从表中可以看出，对于帧可靠性，所估计出的结果无论在训练集还是测试集，明显优于随机可靠性，
+值得说明的是在KITTI上训练的网络在RobotCar
+数据集测试依然有效，可以证明方法的泛化性。
+此外本节可视化了估计方差与实际误差之前的对比图（如图\ref{fig:frame_reliability}所示），从图中可以定性的看出二者的相关性较强。
+
+\begin{figure}[h]
+  \centering
+  \begin{subfigure}[b]{0.95\textwidth}
+    \includegraphics[width=\textwidth]{padvo/00_08_relia_error.pdf}
+    \caption{Training Set (KITTI 00-08)}
+    \label{fig:reli_error_1}
+  \end{subfigure}
+  \vspace*{2mm}
+
+  \begin{subfigure}[b]{0.95\textwidth}
+    \includegraphics[width=\textwidth]{padvo/10_relia_error.pdf}
+    \caption{Testing Set (KITTI 10)}
+    \label{fig:reli_error_2}
+  \end{subfigure}
+  \vspace*{2mm}
+
+  \begin{subfigure}[b]{0.95\textwidth}
+    \includegraphics[width=\textwidth]{padvo/RobotCar_relia_error.pdf}
+    \caption{Testing Set (RobotCar)}
+    \label{fig:reli_error_3}
+  \end{subfigure}
+  \caption{帧可靠性效果图}
+  \label{fig:frame_reliability}
+\end{figure}
+
+%improve compare without reliability
+%use reliability to filter
+\subsection{与其它视觉里程计方法比较}
+\label{sec:pad_es_compare}
+\input{data/tables/padvo_kitti_compare.tex}
+
+本节将本文提出的算法在KITTI数据集上进行评测，并与其它基于学习的算法以及传统算法进行比较。模型
+在序列00-08上进行训练，在09-10上测试。由于单目尺度在泛化性上存在问题，我们将网络所
+得到的运动通过乘以固定的尺度系数来与真实轨迹进行对齐。所比较的方法中，因为SfM-Learner\cite{zhou2017unsupervised}
+和GeoNet \cite{yin2018geonet}不具备全局尺度一致性，其尺度对齐是通过每5帧乘尺度系数进行对齐。我们将比较结果记录于表\ref{tab:pad_kitti_compare}。
+可以看出本章算法优于其它基于学习的算法。另外，从表\ref{tab:pad_kitti_compare_ge}，本章算法也优于LIBVISO2和ORB-SLAM2等传统算法的单目版本。
+
+\subsection{特征层可视化}
+\label{sec:pad_es_visu}
+
+\begin{figure*}[h]
+  \centering
+  \mysubfigure[KITTI 10-40]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/000040.png}}{\label{fig:img_40}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0040_7.png}}{\label{fig:40_7}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0040_2.png}}{\label{fig:40_2}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0040_5.png}}{\label{fig:40_5}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0040_9.png}}{\label{fig:40_9}}
+  \vspace*{2mm}
+  \mysubfigure[KITTI 10-119]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/000119.png}}{\label{fig:119}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0119_7.png}}{\label{fig:119_7}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0119_2.png}}{\label{fig:119_2}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0119_5.png}}{\label{fig:119_5}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0119_9.png}}{\label{fig:119_9}}
+  \vspace*{2mm}
+  \mysubfigure[KITTI 10-200]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/000200.png}}{\label{fig:200}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0200_7.png}}{\label{fig:200_7}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0200_2.png}}{\label{fig:200_2}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0200_5.png}}{\label{fig:200_5}}
+  \vspace*{2mm}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0200_9.png}}{\label{fig:200_9}}
+  \vspace*{2mm}
+   \mysubfigure[KITTI 10-437]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/000437.png}}{\label{fig:437}}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0437_7.png}}{\label{fig:437_7}}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0437_2.png}}{\label{fig:437_2}}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0437_5.png}}{\label{fig:437_5}}
+  \mysubfigure[]{0.19}{
+  \includegraphics[width=\textwidth]{padvo/f1_0437_9.png}}{\label{fig:437_9}}
+  \caption{网络特征学习效果图}
+  \label{fig:feature_1}
+\end{figure*}
+为了可以更好的理解神经网络学到了什么，本节将第一个卷积层之后的特征图可视化于图
+\ref{fig:feature_1}。第一个卷积层之后有16个特征层，本节可视化了其中四个。 图中，红色代表激活函数输出更高，表示网络更注重观察这些区域，绿色与之相反。
+如图所示，各个特征层在关注于不同的图像区域，可视化的四个特征层分别关注于：路面、路的边界、
+楼宇树木和天际线。
+
+\section{本章小结}
+\label{sec:conclusion}
+本章提出了一种基于区域一致性的深度单目视觉里程计网格构架设计方法。依据单目运动估计映射的全局冗余性和区域一致性，以隐式地
+增加训练数据集的数据量并减少训练集与测试集之间的差异为目的，本章首次提出使用卷积神经网络学习从图像子区域到相机运动之间的映射模型。为了适应不同图像区域的特征差异，本章同时对区域运动估计的可靠性进行建模，并以其为权重计算最终的相机的运动。
+我们在KITTI公开数据上对本章提出的算法进行了验证：通过消冗
+实验证明了本文的方法可以增强算法的准确性以及跨数据集测试的泛化性；同时，在与其它方法比较中可以发现，本章所提出的方法优于
+同时期其它基于学习的运动估计方法。

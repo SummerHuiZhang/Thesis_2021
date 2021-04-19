@@ -1,0 +1,291 @@
+\chapter{引言}
+\label{ch:introduction}
+\section{研究背景和意义}
+定位的重要性与必要性：早期人类如何定位的，对于人们的日常，以及航海、外太空探索等重要的研究项目，定位的重要性：
+人工智能技术的出现，出人们生活带来的便利与第四代工业革命意义：
+
+
+介绍研究背景：介绍问题涉及的领域或者研究要调查的领域。
+视觉里程计是：
+陈述研究问题：对研究问题作出清晰明确的解释，介绍研究方法和研究目的。
+
+研究理论框架：撰写文章的理论基础，定义术语概念。
+
+撰写文献综述：对该论题相关文献的简要回顾，可以指出不足之处。
+
+阐述研究意义：描述课题的重要性，对实践、课题或某一研究领域的意义。
+
+简述论文结构：文章写作框架以及各章节主要内容。-*
+
+单目视觉里程计是
+
+人工智能发展的历史：1956年达特茅斯会议，标志着AI的诞生，第一个神经网络由Rosenblatt在1957年提出；但是由于计算能力的限制，
+没能使机器完成大规模数据训练和复杂任务，AI进入第一个低谷时期；1986年，BP算法的出现使得大规模神经网络的训练成为可能，带来AI的第二个黄金时代；
+但是，由于AI计算机DARPA没能实现，政府支持度降低，资金投入缩减，使AI进入了第二个低谷；2006年，Hilton提出“深度学习神经网络”，使AI出现了突破性转折，并先后在机器视觉识别、智能语音等领域取得成功，
+宣告了AI的爆发式发展，表明人类正式进入感知智能时代。
+
+智能机器人优点：高精度、更安全、无疲劳的执行任务，减少人力成本与危险。
+智能机器人的发展趋势：
+    工业：核电作业、能源矿山——焊接、喷漆、装配机器人；矿山勘探开采、水下考察；湖南大学研发智能桥梁检测特种机器人
+    农业：精准农业，常见的有播种机器人、收割机器人，智能化程度高、
+    物流：智慧物流，快递分拣
+    交通：安全监测、智慧巡检、特殊时期运输。例如深圳一清科技研发的“夸父-I”无人车在重灾区、一线城市郊野和产业园区等场所往返运输生活用品、医疗器械等。
+    医疗保健：智慧医疗、疫情防控、救援抢险、助老助残——实质上解决医生的长时间工作疲劳以及提高工作的精确度。外骨骼机器人——模仿人体骨骼结构设计的一种机电一体化装置，通过感知穿戴者的意图，
+            帮助残障人士更自主的生活，同时帮助负重等工作人士的身体损伤，提升人体机能。又如在2020年初新型冠状病毒肺炎大肆感染的同时，湖南大学自主研制了测温-诊断智能机器人、智能消毒机器人、
+            医药物资搬运机器人等，投入多家医院使用。
+    军事领域：国防军事、外太空空间探索、极地科考、应急安防——在外太空、极地以及深海等人类难以到达的环境，拓展人类能力，利用多模态的感知手段为复杂地形下的自主探测提供了新的解决方案。
+            降低对人类对挑战，提高对宇航员的防护；在极地采取更有效的测量手段、降低恶劣环境对人的影响。卡梅尔自助驾驶装甲车、无人机集群（美国“F/A-18超级大黄蜂”战斗机）
+    服务：导览娱乐、餐饮、改变产品形态与传统服务模式
+智能自主无人系统的导航、
+
+智能机器人的发展趋势：
+    自主化：感知、处理、决策、执行等模块，机器人像人类一样能够灵活的处理出现的一些状况，甚至替人类完成高难度的任务，使人工智能作为人类和智能世界的桥梁。
+    协作化：
+    灵巧化：
+AI外在形态，常见机器人类型：无人驾驶汽车、多足机器人、人形机器人、手机/电脑、服务机器人、手术机器人、空中机器人、AR/VR机器人
+
+\subsection{研究挑战}
+2019年，《科学：机器人》杂志发表了关于智能机器人目前的十大挑战，包括：新材料和制造方案、仿生机器人、动力和能源、机器人集群、导航和探索、智能机器人、
+        社会交互、脑机接口、医疗机器人、机器人伦理及安全。
+        
+本文重点研究机器人的视觉导航能力，这就要求机器人首先具有感知环境以及自我定位的能力
+
+机器人必须保证能够获得随着时间的推移获取自身位置的改变。促使机器人需要具备自主定位功能，以实现自主导航、运动跟踪、障碍物检测和规避等功能，
+而单目视觉里程计是解决单目视觉定位计最快捷方便的方式。
+
+\section{研究现状}
+
+什么是里程计？
+里程计，英文是"odmetry"，该词源于两个希腊词hodos（意为 "旅程"或者"旅行"）和metron（意为 "测量"）\cite{2005Visual}。这一推导与估计机器人姿势（平移和方向）随时间的变化有关。
+移动机器人使用来自运动传感器的数据来估计它们相对于初始位置的位置；这个过程被称为里程测量。里程计是使用来自运动传感器的数据来估算其位置随着时间变化的一种定位技术，
+一些腿式或轮式机器人在机器人定位技术中使用它来估计其相对于起始点的位置。由于对速度测量值进行了时间积分，因此该方法对误差很敏感，可以给出位置估计值。在大多数情况下，
+需要快速而准确的数据收集，仪器标定校准和快速处理才能有效使用里程计。
+
+什么是视觉里程计，即VO（visual odometry）？VO是一种视觉定位技术，仅仅通过从连接到机器人的单个或多个摄像头获取的图像序列来实现机器人定位\cite{2008Monocular}。
+这些图像包含足够多的有意义的信息（颜色、纹理、形状等），以估计相机在静态环境中的运动\cite{Rone2013Mapping}。
+
+视觉里程计的实现方法？
+按照传感器数目的不同可以分为：多目相机、双目相机、单目相机，其中相机的类型包括普通相机、鱼眼相机和全景相机等。
+
+近年来为了保障机器人能够获得随着时间的推移其位置的改变，研究人员和工程师们开发了各种用于移动机器人定位的传感器、技术和系统，如全球定位系统(GPS)、车轮测距法、激光或超声波测距法、
+惯性导航系统（INS）和视觉里程计（VO）等。然而，每种技术都有自己的弱点：车轮里程测量是最简单的位置估计技术，但由于车轮滑移，
+它存在位置漂移问题\cite{2005Visual}。INS极易产生漂移，而高精度的INS价格昂贵，对于商业用途来说是不可行的解决方案。GPS是最常见的定位解决方案，因为它可以提供
+绝对的位置而不会积累误差，但它只在天空视野清晰的地方有效，它不能在室内、深海、密闭空间等环境中使用\cite{2011Combined}。商用GPS所估计位置的误差也较大，通常其误差是在米级。
+这种误差被认为对于要求精度以厘米为单位的精确应用来说太大，例如室内服务机器人小面积精准定位和自主停车等。差分式全球定位系统和实时运动式全球定位系统可以提供厘米级精度的位置，
+但这些技术成本较高价格昂贵。GPS详细介绍与定位原理：GPS英文全称是Global Positioning System（全球定位系统），是一项已经深深的融入到了我们老百姓的日常生活中的定位方式，包括车载型、
+通讯型、便携型、船载型、指挥型等多种用户终端，具体如每日必不可少的车辆导航、手机定位等。其最早应用可以追溯到冷战时期，真正达到民用是在1993年6月26日，美国空军将第24颗Navstar卫星
+送入轨道，完成了由24颗卫星组成的网络，而GPS接收器的可以保证以较低的价格就可以立即获取我们在地球上所处的10米级的位置，包括纬度，经度和海拔。
+根据美国政府有关全球定位系统(GPS)\footnote{https://www.gps.gov/chinese.php}
+的官方信息，截至2020年5月，有29颗可运行卫星。
+%卫星每天以20,200公里（12,550英里）的速度绕地球飞行两次。美国空军监视和管理该系统，并承诺在95％的时间中至少拥有24颗卫星，其中21颗工作卫星，3颗备用卫星。24颗卫星
+%运行在6个轨道平面上，运行周期为12个小时。保证在任一时刻、任一地点高度角15度以上都能够观测到4颗以上的卫星。
+
+卫星导航系统虽然最早是美国发明并投入使用的，但其他国家也开发了自己的卫星导航系统，比如我们国家自主研发的北斗卫星导航系统、俄罗斯的格洛纳斯系统、欧盟的伽利略定位系统。
+除伽利略系统外，其余系统都已投入运营。
+北斗定位系统：国产 详细介绍
+
+车轮测距法：
+激光或超声波测距法：
+惯性导航系统（INS）：
+视觉里程计：双目里程计与单目里程计是视觉里程计的研究热点，双目VO的优势在于，对机器人的运动轨迹估计更加精确，且具备明确的距离单位。而在单目VO中，如果没有已知量度大小作为
+参考我们只能知道物体在x/y方向上移动了1个或多个单位，却不知道具体的单位大小。但是，单目视觉里程计比双目里程计更有研究价值，原因如下：单目相机比双目相机更加便于标定校准、
+当物体距离机器人很远的，双目系统又退化为单目系统。
+单目系统；而且当机器人形体很小时，对单目相机被占据更小空间，即使安装了双目相机，但是因为两个相机距离及其近，又可被近似为单目系统。
+
+视觉里程计的主要工作就是计算从图像$I_t$到图像$I_{t+1}$位置变换$T_k$ ，然后集成所有的变换恢复出相机的全部轨
+迹C0:n。这意味着VO是一种增量式轨迹重建方法。
+
+
+\section{内容与贡献}
+本文提出了哪几种方案，主要贡献是：
+\begin{enumerate}
+	\item 基于固定相机高度，基于路面几何约束的单目视觉里程计尺度恢复。
+	\item 基于单目模型的单目尺度计算：从手动建模到自主学习
+	\item 传统视觉位姿估计与深度学习尺度恢复的结合
+	\item 视觉定位以及其与视觉里程计的结合
+\end{enumerate}
+
+\section{全文架构}
+
+视觉定位在机器人应用领域引起了越来越多的关注，例如自动驾驶和家庭服务机器人。 这个紧迫的问题仍然没有完美的解决方案，因为现实世界中的地方的出现可以有各种各样
+的方式，如知觉混叠、逻辑变化和不同的视角。 近年来，大量的研究人员试图用大量的方法来更新最先进的工作，特别是深度学习的应用。 本文从“位置识别”的定义和该问题的挑战入手。
+然后，对图像预处理、特征提取器、地图采集和匹配查询图像四个部分进行了详细的描述，并进行了充分的可信分析。 我们的重点是介绍和比较了几个在位置识别系统中使用的网络，如CycleGAN、StarGAN，以及它们如何提高图像预处理中的定位精度，并学习到了一些以前没有分析过的特征。
+
+位置识别是定义良好但相当具有挑战性的研究。 它在保存的地图中定位给定的查询图像，这是计算机视觉和机器人通信中的一个关键和难题。 首先，是什么地方？ 在动物研究中，
+OKeefe和Dostrovsky于1917年鉴定了大鼠海马中的位置细胞。他们初步观察了自由运动大鼠海马单元的行为，以支持海马功能理论，发现当大鼠在环境中的特定位置时，放置细胞会
+着火。地点的定义是什么呢？识别对我们人类没有任何智能辅助工具，如电话？ 你可能得到了一个答案，喜欢我可以识别这个熟悉的地方，当我重新访问它，你如何定义熟悉？
+
+对于机器人来说，位置的定义可以从0维点到二维或三维区域不等，这取决于导航上下文\cite{lowry2016visual}\cite{kuipers2000spatial}。 给定一个地方的图像，机器人应该
+决定这个图像是否是存储在他们的地图中的地方，如果是的话，在接受的错误中哪一个是最好的匹配。 如果每幅图像都有GPS信息和视觉里程表，就会成为定位问题。 从定义上，我们
+知道地方识别系统必须具备和必须做的一些基本事情。那么机器人视觉位置识别系统由什么组成呢？ 首先，图像预处理，视觉数据必须由机器人来理解，其中包括用GaNite
+\cite{latif2017addressing}、CycleGAN\cite{zhu2017unpaired}进行图像传输等。 第二，特征提取，例如。 手工制作和学习。 然后，用拓扑或度量或拓扑度量方法映射投标。
+最后但并非最不重要的是，搜索具有信念的最佳匹配图像并检索其位置信息。
+
+\subsection{机器人视觉位置识别中的挑战}
+视觉位置识别中的挑战主要是由光照条件、颜色、天气、视野、结构和动态元素等引起的。实际上，这些变化通常同时出现。有一些很好的工
+作来处理这些变化中的一个引用。但是很难修复它们，并抛出一个机器人来定位自己在实际环境中。
+\begin{figure}[h]
+	\begin{subfigure}[c]{0.22\textwidth}
+        \includegraphics[width=\textwidth]{SMC/1_crop.png}
+        \label{fig:DifferentConditiona}
+    \end{subfigure} 
+    \begin{subfigure}[c]{0.22\textwidth}    
+        \includegraphics[width=\textwidth]{SMC/2_crop.png}
+        \label{fig:DifferentConditionb}    
+    \end{subfigure} 
+    \begin{subfigure}[c]{0.22\textwidth}    
+    	\includegraphics[width=\textwidth]{SMC/3_crop.png}
+    	\label{fig:DifferentConditionc}    
+    \end{subfigure}
+    \begin{subfigure}[c]{0.22\textwidth}    
+    	\includegraphics[width=\textwidth]{SMC/4_crop.png}
+    	\label{fig:DifferentConditiond}    
+    \end{subfigure}
+    \begin{subfigure}[c]{0.22\textwidth}    
+    	\includegraphics[width=\textwidth]{SMC/5_crop.png}
+    	\label{fig:DifferentConditione}    
+    \end{subfigure}
+    \begin{subfigure}[c]{0.22\textwidth}    
+    	\includegraphics[width=\textwidth]{SMC/6_crop.png}
+    	\label{fig:DifferentConditionf}    
+    \end{subfigure}
+    \begin{subfigure}[c]{0.22\textwidth}    
+    	\includegraphics[width=\textwidth]{SMC/7_crop.png}
+    	\label{fig:DifferentConditiong}    
+    \end{subfigure} 
+    \begin{subfigure}[c]{0.22\textwidth}    
+    	\includegraphics[width=\textwidth]{SMC/8_crop.png}
+    	\label{fig:DifferentConditionh}    
+    \end{subfigure} 
+    \begin{subfigure}[c]{0.22\textwidth}    
+    	\includegraphics[width=\textwidth]{SMC/9_crop.png}
+    	\label{fig:DifferentConditioni}    
+	\end{subfigure} 
+	\hspace{4mm}
+    \begin{subfigure}[c]{0.22\textwidth}    
+    	\includegraphics[width=\textwidth]{SMC/10_crop.png}
+    	\label{fig:DifferentConditionj}    
+	\end{subfigure}
+	\hspace{4mm} 
+    \begin{subfigure}[c]{0.22\textwidth}    
+    	\includegraphics[width=\textwidth]{SMC/11_crop.png}
+    	\label{fig:DifferentConditionk}    
+	\end{subfigure}
+	\hspace{4mm}  
+    \begin{subfigure}[c]{0.22\textwidth}    
+    	\includegraphics[width=\textwidth]{SMC/12_crop.png}
+    	\label{fig:DifferentConditionl}    
+	\end{subfigure} 
+	\caption{同一地点不同环境下的图片变化。}
+	\label{fig:DifferentCondition}
+\end{figure}
+
+毫无疑问，照明条件可以彻底改变一个地方的呈像外观。(图\ref{fig:DifferentConditionc}, \ref{fig:DifferentConditionh}和\ref{fig:DifferentConditiong}), 
+不同天气环境(\ref{fig:DifferentConditionf}和图\ref{fig:DifferentConditionl})，移动物体(图\ref{fig:DifferentConditiona}
+中的汽车和图\ref{fig:DifferentConditionl})，季节变换(图\ref{fig:DifferentConditionf}和图\ref{fig:DifferentConditionb})，场景结构变化(图\ref{fig:RealMatch}) 等。
+
+\begin{figure}[h]
+	\begin{subfigure}[h]{0.22\textwidth}
+		\includegraphics[width=\textwidth]{SMC/structure1_crop.png}
+		\label{fig:structure1}
+	\end{subfigure}
+	\begin{subfigure}[h]{0.22\textwidth}
+		\includegraphics[width=\textwidth]{SMC/structure2_crop.png}
+		\label{fig:structure2}
+	\end{subfigure}
+	\begin{subfigure}[[h]{0.22\textwidth}
+		\includegraphics[width=\textwidth]{SMC/structure3_crop.png}
+		\label{fig:structure3}
+	\end{subfigure}
+	\begin{subfigure}[h]{0.22\textwidth}
+		\includegraphics[width=\textwidth]{SMC/structure4_crop.png}
+		\label{fig:structure4}
+	\end{subfigure}
+	\caption{Oxford RobotCar数据集中，随着时间的推移同一地点产生的结构变化的例子。}
+	\label{fig:RealMatch}
+\end{figure}
+
+\subsubsection{视觉场景混淆}
+视觉场景混淆意味着相同但不能区分的观察，FAB-MAP学习了场所外观的生成模型。
+
+\begin{figure}
+	\centering
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{SMC/alising1.png}
+        \caption{input}
+    \end{subfigure}
+	\vspace*{4mm}
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{SMC/alising2.png}
+        \caption{input}
+    \end{subfigure}
+\caption{Norland数据集中的感知偏差示例图。}
+\label{fig:alising_SMC}
+\end{figure}
+
+\subsubsection{多种多样视角}
+\begin{figure}[h]
+	\centering
+	\begin{subfigure}[h]{0.23\textwidth}
+		\includegraphics[width=\textwidth]{SMC/viewpoint1_crop.png}
+		\caption{viewpoint1}
+	\end{subfigure}
+	\begin{subfigure}[h]{0.23\textwidth}
+		\includegraphics[width=\textwidth]{SMC/viewpoint2_crop.png}
+		\caption{viewpoint2}
+	\end{subfigure}
+	\begin{subfigure}[h]{0.23\textwidth}
+		\includegraphics[width=\textwidth]{SMC/viewpoint3_crop.png}
+		\caption{viewpoint3}
+	\end{subfigure}
+	\begin{subfigure}[h]{0.23\textwidth}
+		\includegraphics[width=\textwidth]{SMC/viewpoint4_crop.png}
+		\caption{viewpoint4}
+	\end{subfigure}
+	\caption{来自\cite{Philbin08}的多种多样视角示例图。}
+	\label{fig:alising}
+\end{figure}
+视场的变化
+机器人定位还可以帮助构建地图、可视化同时定位和映射(SLAM)\cite{Cummins2011Appearance,milford2012seqslam,Naseer2015Robust,Davison2007MonoSLAM,Engel2014LSD,Choset2001Topological,Mur2017ORB}。
+
+FAB-MAP：\cite{Cummins2008FAB}
+FAB-MAP不仅可以对机器人进行定位，还可以对其地图进行扩充。
+
+FAB-MAP2.0\cite{Cummins2011Appearance}
+外观-只有SLAM在大规模与FAB-MAP2.0：\cite{Cummins2011Appearance}
+FAB-MAP3D：具有空间和视觉外观的拓扑映射：\cite{Paul2010FAB}
+
+\section{图像处理}
+\label{sec:preprocessing}
+\subsection{图像跨域转换}
+\subsubsection{季节转换————跨季节的视觉SLAM}
+外观变化消除可以框架为域转换问题，从原始域地图的视觉表示（$D_A$），到目标域图像（$D_B$）外观变化查询图像。
+GAN\cite{latif2017addressing}
+CycleGAN\cite{zhu2017unpaired}
+%\subsection{动态物体移除}
+
+\section{地图构建}
+\label{sec:map}
+地图可能是已知的（本地化），也可能是并行构建的。 词袋法是计算机视觉社区中广泛使用的基本数据表示方法\cite{Sivic2003Video}。
+原始感官数据中检测到的相机特征被量化为词汇，产生视觉词。然后从一组训练数据中对单词进行聚类，通常采用K-均值，我们可以将传入的
+视觉单词分类为其中之一。FAB-MAP\cite{Cummins2008FAB}将世界建模为一组离散的位置，这些位置由外观词上的分布描述。 查询感官
+数据被转换为单词包表示，然后计算观察来自该位置分布的概率。
+
+大多数现有的视觉定位方法分为两类：度量或拓扑。度量定位可以非常精确，但对于长序列可能会随时间漂移或失败，而拓扑定位可能更可靠，但只提供粗略的位置估计。 对于一个自主系统（例如移动机器人或自动驾驶车辆），它的任务是使用与它相连的单个摄像机的视觉信息来定位自己。
+
+地图$M = \{I_1, I_2, ..., I_n\}$是由n个视觉表示$I_i \in \mathbb{R}^m $,来构造的，其中$m$表示维度大小。 给定这样一个$M$的映射和输入视觉图像$\hat{I}$表示，位置识别充当$p = f(M, \hat{I})$的函数，其中$p$表示$M$中的每个特征表示是${I}$的相同位置的可信度分布$\hat{I}$。
+
+外观变化消除可以框架为域转换问题，从地图的视觉表示（原始域$D_A$），到待定位图像的视觉表示(目标域$D_B$)。
+%\begin{figure}
+%\centering
+%\includegraphics[width=\textwidth]{SMC/Flow1.png}
+%\caption{Diverse Viewpoint examples that from \cite{Philbin08}。}
+%\label{fig:flow}
+%\end{figure}
+
+%\begin{figure}
+%\centering
+%\includegraphics[width=\textwidth]{SMC/Flow2.png}
+%\caption{Edge connections between matching nodes (white) and corresponding hidden nodes (red) in G. For two connected nodes, both the matching state and the hidden state from the first node can either reach the matching or the hidden state of the second node. Nodes are only connected horizontally in the same row of the corresponding similarity matrix or the following row. The edges and the corresponding notations of the edge sets are colored accordingly for better understanding of the connections \cite{Naseer2015Robust}}
+%\label{fig:flow2}
+%\end{figure}

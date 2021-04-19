@@ -1,0 +1,21 @@
+\begin{table}[ht]
+    \caption{运动聚焦解耦的性能提升}
+    \label{tab:info_improve}
+    \begin{center}
+    \begin{tabular}{c c c c c c }
+    \toprule
+    % \hline
+    \multirow{3}*{Train} & \multirow{3}*{Test} &\multicolumn{2}{c}{Learn All Motion} & \multicolumn{2}{c}{Learn $R_y, t_z$}\\
+    & &Trans & Rot & Trans & Rot\\
+    & & (\%) & (deg/m)  & (\%) & (deg/m)\\
+    %  % \hline%\hline
+    \midrule
+     00 & 02 04 06 08 10 &26.8 & 0.137 & 23.9 & 0.110 \\
+     00 02 & 04 06 08 10 &18.3 & 0.095 & 16.7 & 0.070 \\
+     00 02 04 & 06 08 10 &17.6 & 0.091 & 16.9 & 0.076 \\
+     00 02 04 06 & 08 10 &15.3 & 0.082 & 13.2 & 0.065   \\
+    % \hline
+    \bottomrule
+    \end{tabular}
+    \end{center}
+ \end{table}

@@ -1,0 +1,195 @@
+视觉定位在机器人应用领域引起了越来越多的关注，例如自动驾驶和家庭服务机器人。 这个紧迫的问题仍然没有完美的解决方案，因为现实世界中的地方的出现可以有各种各样
+的方式，如知觉混叠、逻辑变化和不同的视角。 近年来，大量的研究人员试图用大量的方法来更新最先进的工作，特别是深度学习的应用。 本文从“位置识别”的定义和该问题的挑战入手。
+然后，对图像预处理、特征提取器、地图采集和匹配查询图像四个部分进行了详细的描述，并进行了充分的可信分析。 我们的重点是介绍和比较了几个在位置识别系统中使用的网络，
+如CycleGAN、StarGAN，以及它们如何提高图像预处理中的定位精度，并学习到了一些以前没有分析过的特征。
+
+位置识别是定义良好但相当具有挑战性的研究。 它在保存的地图中定位给定的查询图像，这是计算机视觉和机器人通信中的一个关键和难题。 首先，怎么定义一个地点？ 在动物研究中，
+OKeefe和Dostrovsky于1917年鉴定了大鼠海马中的位置细胞。他们初步观察了自由运动大鼠海马单元的行为，以支持海马功能理论，发现当大鼠在环境中的特定位置时，“位置细胞”会
+被激活。%地点的定义是什么呢？识别对我们人类没有任何智能辅助工具，如电话？ 你可能得到了一个答案，喜欢我可以识别这个熟悉的地方，当我重新访问它，你如何定义熟悉？
+对于机器人来说，位置的定义可以从0维点到二维或三维区域不等，这取决于导航上下文\cite{lowry2016visual}\cite{kuipers2000spatial}。 给定一个地方的图像，机器人应该
+决定这个图像是否是存储在他们的地图中的地方，如果是的话，在接受的错误中哪一个是最好的匹配。 如果每幅图像都有GPS信息和视觉里程表，就会成为定位问题。 从定义上，我们
+知道地方识别系统必须具备和必须做的一些基本事情。那么机器人视觉位置识别系统由什么组成呢？ 首先，图像预处理，视觉数据必须由机器人来理解，其中包括用GaNite
+\cite{latif2017addressing}、CycleGAN\cite{zhu2017unpaired}进行图像传输等。 第二，特征提取，例如。 手工制作和学习。 然后，用拓扑或度量或拓扑度量方法映射投标。
+最后但同样重要的是，搜索高达一定匹配度的图像并检索其位置信息。
+
+\subsection{机器人视觉位置识别中的挑战}
+视觉位置识别中的挑战主要是由光照条件、颜色、天气、视野、结构和动态元素等引起的。实际上，这些变化通常同时出现，有一些很好的工
+作来处理这些变化。但是很难修复它们，所以让机器人在实际环境中实现自我定位是一项挑战。
+\begin{figure}[h]
+	\begin{center}
+	\begin{subfigure}[b]{0.22\textwidth}
+		\includegraphics[width=\textwidth]{SMC/1_crop.png}
+		\caption{}
+        \label{fig:DifferentConditiona}
+	\end{subfigure} 
+	\vspace*{4mm}
+    \begin{subfigure}[b]{0.22\textwidth}    
+		\includegraphics[width=\textwidth]{SMC/2_crop.png}
+		\caption{}
+        \label{fig:DifferentConditionb}    
+    \end{subfigure} 
+    \begin{subfigure}[b]{0.22\textwidth}    
+		\includegraphics[width=\textwidth]{SMC/3_crop.png}
+		\caption{}
+    	\label{fig:DifferentConditionc}    
+    \end{subfigure}
+    \begin{subfigure}[b]{0.22\textwidth}    
+		\includegraphics[width=\textwidth]{SMC/4_crop.png}
+		\caption{}
+    	\label{fig:DifferentConditiond}    
+	\end{subfigure}
+    \begin{subfigure}[b]{0.22\textwidth}    
+		\includegraphics[width=\textwidth]{SMC/5_crop.png}
+		\caption{}
+    	\label{fig:DifferentConditione}    
+	\end{subfigure}
+	\vspace*{4mm}
+    \begin{subfigure}[b]{0.22\textwidth}    
+		\includegraphics[width=\textwidth]{SMC/6_crop.png}
+		\caption{}
+    	\label{fig:DifferentConditionf}    
+    \end{subfigure}
+    \begin{subfigure}[b]{0.22\textwidth}    
+		\includegraphics[width=\textwidth]{SMC/7_crop.png}
+		\caption{}
+    	\label{fig:DifferentConditiong}    
+    \end{subfigure} 
+    \begin{subfigure}[b]{0.22\textwidth}    
+		\includegraphics[width=\textwidth]{SMC/8_crop.png}
+		\caption{}
+    	\label{fig:DifferentConditionh}    
+	\end{subfigure} 
+    \begin{subfigure}[b]{0.22\textwidth}    
+		\includegraphics[width=\textwidth]{SMC/9_crop.png}
+		\caption{}
+    	\label{fig:DifferentConditioni}    
+	\end{subfigure} 
+    \begin{subfigure}[b]{0.22\textwidth}    
+		\includegraphics[width=\textwidth]{SMC/10_crop.png}
+		\caption{}
+    	\label{fig:DifferentConditionj}    
+	\end{subfigure}
+    \begin{subfigure}[b]{0.22\textwidth}    
+		\includegraphics[width=\textwidth]{SMC/11_crop.png}
+		\caption{}
+    	\label{fig:DifferentConditionk}    
+	\end{subfigure}
+    \begin{subfigure}[b]{0.22\textwidth}    
+		\includegraphics[width=\textwidth]{SMC/12_crop.png}
+		\caption{}
+    	\label{fig:DifferentConditionl}    
+	\end{subfigure} 
+	\end{center}
+	\caption{同一地点不同环境下的图片变化。}
+	\label{fig:DifferentCondition}
+\end{figure}
+
+毫无疑问，照明条件可以彻底改变一个地方的呈像外观。(图\ref{fig:DifferentConditionc}, \ref{fig:DifferentConditionh}和\ref{fig:DifferentConditiong}), 
+不同天气环境(\ref{fig:DifferentConditionf}和图\ref{fig:DifferentConditionl})，移动物体(图\ref{fig:DifferentConditiona}
+中的汽车和图\ref{fig:DifferentConditionl})，季节变换(图\ref{fig:DifferentConditionf}和图\ref{fig:DifferentConditionb})，场景结构变化(图\ref{fig:RealMatch})等。
+\begin{figure}[h]
+	\begin{subfigure}[b]{0.22\textwidth}
+		\includegraphics[width=\textwidth]{SMC/structure1_crop.png}
+		\label{fig:structure1}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.22\textwidth}
+		\includegraphics[width=\textwidth]{SMC/structure2_crop.png}
+		\label{fig:structure2}
+	\end{subfigure}
+	\begin{subfigure}[[b]{0.22\textwidth}
+		\includegraphics[width=\textwidth]{SMC/structure3_crop.png}
+		\label{fig:structure3}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.22\textwidth}
+		\includegraphics[width=\textwidth]{SMC/structure4_crop.png}
+		\label{fig:structure4}
+	\end{subfigure}
+	\caption{Oxford RobotCar数据集中，随着时间的推移同一地点产生的结构变化的例子。}
+	\label{fig:RealMatch}
+\end{figure}
+\subsubsection{视觉场景混淆}
+视觉场景混淆意味着本是不同地点但却无法区分的两个场景，FAB-MAP学习了场所外观的生成模型。
+\begin{figure}[h]
+	\centering
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{SMC/alising1.png}
+        \caption{input}
+    \end{subfigure}
+	\vspace*{4mm}
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=\textwidth]{SMC/alising2.png}
+        \caption{input}
+    \end{subfigure}
+\caption{Norland数据集中的感知偏差示例图。}
+\label{fig:alising_SMC}
+\end{figure}
+
+\subsubsection{多种多样视角}
+\begin{figure}[h]
+	\centering
+	\begin{subfigure}[h]{0.23\textwidth}
+		\includegraphics[width=\textwidth]{SMC/viewpoint1_crop.png}
+		\caption{viewpoint1}
+	\end{subfigure}
+	\begin{subfigure}[h]{0.23\textwidth}
+		\includegraphics[width=\textwidth]{SMC/viewpoint2_crop.png}
+		\caption{viewpoint2}
+	\end{subfigure}
+	\begin{subfigure}[h]{0.23\textwidth}
+		\includegraphics[width=\textwidth]{SMC/viewpoint3_crop.png}
+		\caption{viewpoint3}
+	\end{subfigure}
+	\begin{subfigure}[h]{0.23\textwidth}
+		\includegraphics[width=\textwidth]{SMC/viewpoint4_crop.png}
+		\caption{viewpoint4}
+	\end{subfigure}
+	\caption{来自\cite{Philbin08}的多种多样视角示例图。}
+	\label{fig:alising}
+\end{figure}
+视场的变化
+机器人定位还可以帮助构建地图、可视化同时定位和映射(SLAM)\cite{Cummins2011Appearance,milford2012seqslam,Naseer2015Robust,Davison2007MonoSLAM,Engel2014LSD,Choset2001Topological,Mur2017ORB}。
+
+FAB-MAP：\cite{Cummins2008FAB}
+FAB-MAP不仅可以对机器人进行定位，还可以对其地图进行扩充。
+
+FAB-MAP2.0\cite{Cummins2011Appearance}
+外观-只有SLAM在大规模与FAB-MAP2.0：\cite{Cummins2011Appearance}
+FAB-MAP3D：具有空间和视觉外观的拓扑映射：\cite{Paul2010FAB}
+
+\section{图像处理}
+\label{sec:preprocessing}
+\subsection{图像跨域转换}
+\subsubsection{季节转换——跨季节的视觉SLAM}
+外观变化消除可以框架为域转换问题，从原始域地图的视觉表示（$D_A$），到目标域图像（$D_B$）外观变化查询图像。
+GAN\cite{latif2017addressing}
+CycleGAN\cite{zhu2017unpaired}
+%\subsection{动态物体移除}
+
+\section{地图构建}
+\label{sec:map}
+地图可能是已知的（本地化），也可能是并行构建的。 词袋法是计算机视觉领域中广泛使用的基本数据表示方法\cite{Sivic2003Video}。
+原始感官数据中检测到的相机特征被量化为词汇，产生视觉词。然后从一组训练数据中对单词进行聚类，通常采用K-均值，我们可以将传入的
+视觉单词分类为其中之一。FAB-MAP\cite{Cummins2008FAB}将世界建模为一组离散的位置，这些位置由外观词上的分布描述。 查询感官
+数据被转换为单词包表示，然后计算观察来自该位置分布的概率。
+
+大多数现有的视觉定位方法分为两类：度量或拓扑。度量定位可以非常精确，但对于长序列可能会随时间漂移或失败，而拓扑定位可能更可靠，但只提供粗略的位置估计。 
+对于一个自主系统（例如移动机器人或自动驾驶车辆），它的任务是使用与它相连的单个摄像机的视觉信息来定位自己。
+
+地图$M = \{I_1, I_2, ..., I_n\}$是由n个视觉表示$I_i \in \mathbb{R}^m $,来构造的，其中$m$表示维度大小。 给定这样一个$M$的映射和输入视觉图像$\hat{I}$表示，位置识别充当$p = f(M, \hat{I})$的函数，其中$p$表示$M$中的每个特征表示是${I}$的相同位置的可信度分布$\hat{I}$。
+
+外观变化消除可以框架为域转换问题，从地图的视觉表示（原始域$D_A$），到待定位图像的视觉表示(目标域$D_B$)。
+%\begin{figure}
+%\centering
+%\includegraphics[width=\textwidth]{SMC/Flow1.png}
+%\caption{Diverse Viewpoint examples that from \cite{Philbin08}。}
+%\label{fig:flow}
+%\end{figure}
+
+%\begin{figure}
+%\centering
+%\includegraphics[width=\textwidth]{SMC/Flow2.png}
+%\caption{Edge connections between matching nodes (white) and corresponding hidden nodes (red) in G. For two connected nodes, both the matching state and the hidden state from the first node can either reach the matching or the hidden state of the second node. Nodes are only connected horizontally in the same row of the corresponding similarity matrix or the following row. The edges and the corresponding notations of the edge sets are colored accordingly for better understanding of the connections \cite{Naseer2015Robust}}
+%\label{fig:flow2}
+%\end{figure}
+
+

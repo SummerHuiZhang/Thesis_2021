@@ -1,0 +1,49 @@
+\chapter{数学原理及研究热点数学建模}
+\label{ch:principle}
+\section{单目视觉绝对定位数学原理}
+%准确的视觉定位是自主导航的关键技术，顾名思义，单目视觉定位就是在仅仅利用一台摄像机的条件下完成机器人定位工作。
+大规模绝对视觉定位的最先进技术包括基于2D图像的图像检索法和基于3D结构的2D-3D匹配方法。基于2D图像的图像检索法根据当前图像特征，从具有地理标记图像的数据库中调取出与当前图像最相似的模版图像，并以该模版图像已知的地理标记（常用全球定位系统，即GPS信息）作为自身的地理位置，并返回最相关的数据库图像的姿势。基于3D结构的方法采用场景的3D模型，使用2D-3D匹配与3D模型进行相机姿势估计来非常精确地估计相机的6-DOF姿势。然而，构建大规模的3D模型仍然是一个巨大的挑战。在\cite{2017Are}中通过大量实验证明，当检索到足够多的相关数据库图像时，基于二维图像检索的单目视觉绝对定位可以恢复出精确的相机姿势，大规模的3D模型并不是准确的视觉定位所必需的。相比之下，基于二维图像检索的方法只需要一个地理标记图像的数据库，节省了大量的地图构建和维护成本。
+
+
+\section{单目视觉增量式定位数学原理}
+在本章我们首先介绍了该方法的背景和表示法，然后详细介绍了我们在道路模型计算中的道路点选择算法。 最后，我们使用RANSAC计算相机的初始高度，并采用中值滤波器来减少噪声干扰。
+
+在我们提出的方法中，在摄像机高度保持不变，地面局部平面的假设下，摄像机到路面平面的绝对高度$h_0$被认为是一个参考。所提出的MVO尺度恢复算法的结构如图\ref{fig:structure_mvosr}所示。初始自我运动($R$和$t$
+在相对尺度上)和匹配特征由初始VO过程给出。道路模型估计模块计算安装摄像机的相对高度，即摄像机的光学中心到地面的距离，并有经过验证的道路点。详细来讲，图像首先被Delaunay三角剖分进行分割，%每个三角形都会通过两个约束————深度一致性和路面模型约束进行筛选以判断其是否属于路面。
+每个三角形首先通过考虑深度一致性来确定是否属于道路区域。其余点再通过Delaunay三角剖分，并通过考虑道路模型一致性进行选择。通过筛选的路面特征点被用于计算路面模型$\mathbf{n}^T_i\mathbf{x_i}-\bar{h}_{i}=0$，以求得摄像机相对高度$\bar{h}_i$，通过与给定相机绝对高度比较恢复相机运动绝对尺度$s$，以求得绝对运动估计${R}$和${t}$。
+
+MVO旨在求解相机相对于初始位置坐标$\mathbf{P}_0$的位姿$\mathbf{P}_t$。两帧图像之间$I_t$和$I_{t-1}$之间的相机运动$\mathbf{R}$与$\mathbf{t}$可通过累积求取：
+%(\mathbf{i}=0,1,2,...,n)
+%\begin{equation}
+$\mathbf{P}_t = \mathbf{P}_{t-1}\mathbf{T}$，这里估计运动$\mathbf{T}=[\mathbf{R},\mathbf{t};\mathbf{0},\mathbf{1}]$. 
+两帧图像$I_{t-1}$和$I_t$之间的匹配特征可以分别表示为$\mathbf{M}_{t-1}$和$\mathbf{M}_t$。
+对于最初的两个帧，最常用的解决方案是求解基本矩阵，因为特征点的三维坐标是未知的\cite{luong1996fundamental}:
+\begin{equation}
+    {\mathbf{M}_{t-1}}^T\mathbf{F}\mathbf{M}_{t}=0
+\label{eq:initial}   
+\end{equation}
+这里$\mathbf{F}={\mathbf{K}^{-1}}^{T}{[\mathbf{t}]_\times}\mathbf{R}\mathbf{K}^{-1}$是基础矩阵。
+$\mathbf{K}=[f_x,0,c_x;0,f_y,c_y;0,0,1]$是标定得到的相机内参，其中$c_x$和$c_y$是光心像素坐标（主光轴在物理成像平面上的角点），$f_x$, $f_y$是焦距，即左右投影中心（光心）到物理成像平面的距离。$\mathbf{[\mathbf{t}]_\times} = [0, -t_3, t_2; t_3, 0, -t_1; -t_2, t_1, 0]$是位移矩阵的斜对称矩阵。在公式\eqref{eq:initial}中， 基础矩阵
+$\mathbf{F}$首先被解决，然后通过$\mathbf{F}$的矩阵分解得到旋转矩阵$\mathbf{R}$和位移矩阵$\mathbf{t}$\cite{Nister2004An}。我们通过观察得知如果对位移矩阵
+$\mathbf{t}$乘以一个系数时$s \in \mathbb{R}$, 公式\eqref{eq:initial}仍然成立。
+
+\begin{equation}
+    {\mathbf{M}_{t-1}}^T{\mathbf{K}^{-1}}^{T}{s}{[\mathbf{t}]_\times}\mathbf{R}\mathbf{K}^{-1}\mathbf{M}_{t}=0.
+\end{equation}
+我们可以看到，图像$I_i$中的度量信息是在同一尺度上的，但MVO在没有先验知识的帮助下，不能直接计算出位移向量$\mathbf{t}$在帧$I_i$中的绝对尺度$s_i$，单纯MVO无法获得绝对尺度$\mathbf{\bar{t}}$。
+这意味着MVO可以保证在不同时间计算的相对转换向量$\bar{\mathbf{t}}$在同一尺度上，但转换向量$\mathbf{t}$的绝对尺度无法通过分解基本矩阵$\mathbf{F}$实现。所以强调了绝对先验知识的重要性。
+
+对于接下来的帧，在获取初始运动后，三角测量法计算出特征点$\mathbf{\bar{x}}_i$的三维坐标，该坐标与$\bar{\mathbf{t}}$的比例相同。下一个相机姿势是由3D地图和当前帧通过透视-n-point（PnP）方法计算出来的\cite{lepetit2009epnp}，通过求解 
+\begin{equation}
+    \mathbf{R,\bar{t}}=\mathop{\argmin}_{\mathbf{R,\bar{t}}}\sum_{\mathbf{\bar{x}}_i, \mathbf{\bar{u}}_i}|\frac{\mathbf{K}\left(\mathbf{R}\mathbf{\bar{x}}_i+\mathbf{\bar{t}}\right)}{\mathbf{\bar{x}}_{i3}}-\mathbf{\bar{u}_i}|
+\end{equation}
+其中$\mathbf{\bar{x}}_{i3}$是向量$\mathbf{\bar{x}_i}$的第三个元素。特征点$i$在帧$I_t$中的2D像素坐标表示为$\mathbf{u}_i=(u_i,v_i)$。这种方法可以保持尺度，但误差会累积。
+大多数方法，如直接稀疏odmetry（DSO）\cite{engel2017direct}，大规模直接单目SLAM（LSD-SLAM）\cite{engel2014lsd}，ORB-SLAM \cite{raul2015orb}，
+以及半间接视觉odmetry(SVO)\cite{forster2014svo}，试图通过光束法平差和环路闭合检测技术来对抗尺度漂移，而不是考虑绝对尺度计算。在不与IMU和GPS等其他传感器融合的情况下，
+利用周围环境中已知的绝对比例尺来还原比例尺是一种便捷的方法。借助环境中的度量信息$l$，我们根据其相对尺度计算出尺寸$\bar{l}$，并通过$\frac{l}{\bar{l}}$计算出尺度系数。
+$s=\left.{l}\middle/ \bar{l} \right.$。位移矩阵是根据公式$\mathbf{t}=s\mathbf{\bar{t}}$计算恢复的绝对位移$\mathbf{t}$。
+
+在本文中，所有的标量、向量和矩阵分别用纯字母（如$s$）、粗体小写（如$\mathbf{t}$）和粗体大写（如$\mathbf{R}$）表示。默认情况下，向量是列式的。
+矩阵$\mathbf{R}$的$i_{th}$行和$j_{th}$列中的元素用$R_{ij}$表示。上面带有条形的变量为相对尺度（例如，$\mathbf{\bar{t}}$）。特别是，我们把一个向量的斜
+对称矩阵表示为$[*]_\times$（例如，$[\mathbf{t}]_\times$）。数学集用希腊大写字母表示。例如，$\nabla$表示通过Delaunay三角测量分割的三角形集，$\Theta$表示属于道路的验证三角形。
+$Omega$表示初始特征点集，算法\ref{alg:flat_selection}中验证的道路点集用$\Gamma$表示。这些三角形$\nabla$的内部区域和顶点分别表示为$\widetilde{\nabla}$和$\widehat{\nabla}$。

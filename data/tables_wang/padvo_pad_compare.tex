@@ -1,0 +1,49 @@
+\begin{table*}[h]
+\caption{区域一致模型验证实验记录}
+\begin{center}
+\begin{tabular}{c c c c c c c c c c c c c }
+\toprule
+% \hline
+\multirow{3}{*}{Model}  &\multicolumn{2}{c}{KITTI-06} &\multicolumn{2}{c}{KITTI-08} & \multicolumn{2}{c}{KITTI-10}& \multicolumn{2}{c}{Avg}\\
+%  % \hline%\hline
+\cline{2-3}  \cline{4-5}  \cline{6-7} \cline{8-9} 
+& Trans & Rot  & Trans & Rot &Trans & Rot& Trans & Rot\\ 
+& (\%) & (deg/m)  & (\%) & (deg/m)& (\%) & (deg/m) & (\%) & (deg/m)\\
+\midrule
+ Non-PAD     &27.66&0.1593&26.22&0.1473&23.67&0.108&25.85&0.1382 \\
+ Non-PAD-C   &25.38&0.1519&\textbf{19.13}&0.1005&20.53&0.0563&21.67&0.1029\\
+ \midrule
+ PAD wo Reli &\textbf{16.54}&\textbf{0.0566}&19.34&\textbf{0.0861}&\textbf{13.19}&\textbf{0.0349}&\textbf{16.35}& \textbf{0.0592}\\
+% \hline
+\bottomrule
+\end{tabular}
+\end{center}
+\label{tab:pad_model_compare}
+\end{table*}
+
+\begin{table*}[h]
+  \caption{区域一致模型交差验证实验记录}
+  \begin{center}
+  \begin{tabular}{c c c c c c c c c c c }
+  \toprule
+  % \hline
+Training &\multicolumn{4}{c}{RobotCar-01} &\multicolumn{2}{c}{KITTI-00} \\
+\cline{2-7}
+Testing  &\multicolumn{2}{c}{RobotCar-02} &\multicolumn{2}{c}{KITTI-10} & \multicolumn{2}{c}{RobotCar-02}\\
+  %  % \hline%\hline
+  \cline{1-3}  \cline{4-5}  \cline{6-7} \cline{8-9} 
+  \multirow{2}{*}{Model}  & Trans & Rot  & Trans & Rot &Trans & Rot\\ 
+  & (\%) & (deg/m)  & (\%) & (deg/m)& (\%) & (deg/m) \\
+  \midrule
+   Non-PAD     &\textbf{14.23}&\textbf{0.0405}&34.79&0.1612&52.82&0.1663\\
+   Non-PAD-C   &19.54&0.0550&35.84&0.1825&32.40&0.1135\\
+   \midrule
+   PAD wo Reli &16.23&0.0510&\textbf{23.73}&\textbf{0.1189}&\textbf{29.76}&\textbf{0.0784} \\
+  % \hline
+  \bottomrule
+  \end{tabular}
+  \end{center}
+  \label{tab:pad_model_compare_2}
+  \end{table*}
+
+%lr=0.01 bs=40
